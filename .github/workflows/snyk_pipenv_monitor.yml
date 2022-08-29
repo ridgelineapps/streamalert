@@ -1,0 +1,12 @@
+name: 🔒 Snyk Pipenv Monitor
+
+on:
+  schedule:
+    - cron: '0 22 * * *'
+
+jobs:
+  monitor:
+    uses: ridgelineapps/github-workflows/.github/workflows/snyk_pipenv_monitor.yml@master
+    with:
+      SNYK_ORG: security-engineering-rgp
+    secrets: inherit
