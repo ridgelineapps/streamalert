@@ -47,7 +47,7 @@
             "old_user": "string",
             "operation_type": "string",
             "org": "string",
-            "overidden_codes": [],
+            "overridden_codes": [],
             "owner": "string",
             "permission": "string",
             "previous_visibility": "string",
