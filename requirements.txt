@@ -69,7 +69,7 @@ jsondiff==2.0.0
 jsonpatch==1.32
 jsonpickle==3.0.0
 jsonpointer==2.3
-jsonschema==4.17.3
+jsonschema==3.0
 junit-xml==1.9
 lazy-object-proxy==1.8.0
 MarkupSafe==2.1.1
