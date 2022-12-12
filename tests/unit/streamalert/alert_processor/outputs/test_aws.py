@@ -19,7 +19,7 @@ from email.mime.text import MIMEText
 import boto3
 from botocore.exceptions import ClientError
 from mock import MagicMock, Mock, patch
-from moto import mock_kinesis, mock_s3, mock_sns, mock_sqs, mock_ses, mock_firehose
+from moto import mock_s3, mock_sns, mock_sqs, mock_ses, mock_firehose
 from nose.tools import (
     assert_equal,
     assert_false,
@@ -113,7 +113,10 @@ class TestFirehoseOutput:
     @patch('logging.Logger.info')
     def test_dispatch(self, log_mock):
         """Kinesis Firehose - Output Dispatch Success"""
-        assert_true(self._dispatcher.dispatch(get_alert(output="aws-firehose:unit_test_delivery_stream"), self.OUTPUT))
+        assert_true(self._dispatcher.dispatch(
+            get_alert(output="aws-firehose:unit_test_delivery_stream"),
+            self.OUTPUT
+        ))
 
         log_mock.assert_called_with('Successfully sent alert to %s:%s',
                                     self.SERVICE, self.DESCRIPTOR)

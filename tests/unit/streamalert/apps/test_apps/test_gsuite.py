@@ -14,12 +14,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-import httplib2
 import json
 import os
 import socket
 import ssl
 from datetime import datetime, timedelta
+import httplib2
 
 import googleapiclient
 from google.auth import exceptions
