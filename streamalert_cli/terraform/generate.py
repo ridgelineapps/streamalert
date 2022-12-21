@@ -226,19 +226,22 @@ def generate_main(config, init=False):
         main_dict['resource']['aws_s3_bucket']['logging_bucket'] = generate_s3_bucket(
             bucket=logging_bucket,
             logging=logging_bucket,
-            lifecycle_rule={
+            sse_algorithm='AES256'  # SSE-KMS doesn't seem to work with access logs
+        )
+        main_dict['resource']['aws_s3_bucket_acl']['logging_bucket'] = {
+            "bucket": "${aws_s3_bucket.logging_bucket.id}",
+            "acl": "log-delivery-write"
+        }
+        main_dict['resource']['aws_s3_bucket_lifecycle_configuration']['logging_bucket'] = {
+            "bucket": "${aws_s3_bucket.logging_bucket.id}",
+            "rule": {
                 'prefix': '/',
                 'enabled': True,
                 'transition': {
                     'days': 365,
                     'storage_class': 'GLACIER'
                 }
-            },
-            sse_algorithm='AES256'  # SSE-KMS doesn't seem to work with access logs
-        )
-        main_dict['resource']['aws_s3_bucket_acl']['logging_bucket'] = {
-            "bucket": "${aws_s3_bucket.logging_bucket}",
-            "acl": "log-delivery-write"
+            }
         }
 
 
