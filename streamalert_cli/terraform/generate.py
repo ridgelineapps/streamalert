@@ -77,12 +77,12 @@ def write_vars(config, **kwargs):
     )
 
 
-def generate_s3_bucket(bucket, **kwargs):
+def generate_s3_bucket(bucket, slug=None, **kwargs):
     """Generate an S3 Bucket dict
 
     Args:
         bucket (str): The name of the bucket
-        logging (str): The S3 bucket to send access logs to
+        slug (str): Simple name for resource
 
     Keyword Args:
         acl (str): The S3 bucket ACL
@@ -94,30 +94,28 @@ def generate_s3_bucket(bucket, **kwargs):
     Returns:
         dict: S3 bucket Terraform dict to be used in clusters/main.tf.json
     """
+    bucket_dict = infinitedict()
+
+    if not slug:
+        slug = bucket
+
     sse_algorithm = kwargs.get('sse_algorithm', 'aws:kms')
 
-    s3_bucket = {
-        'bucket': bucket,
-        'force_destroy': kwargs.get('force_destroy', True),
-        'versioning': {
+    bucket_dict['resource']['aws_s3_bucket'][slug] = {
+        'bucket':                               bucket,
+        'force_destroy':                        kwargs.get('force_destroy', True),
+        'versioning':                           {
             'enabled': kwargs.get('versioning', True)
         },
-        'server_side_encryption_configuration': {
-            'rule': {
-                'apply_server_side_encryption_by_default': {
-                    'sse_algorithm': sse_algorithm
-                }
-            }
-        },
-        'policy': json.dumps({
-            'Version': '2012-10-17',
+        'policy':                               json.dumps({
+            'Version':   '2012-10-17',
             'Statement': [
                 {
-                    'Sid': 'ForceSSLOnlyAccess',
-                    'Effect': 'Deny',
+                    'Sid':       'ForceSSLOnlyAccess',
+                    'Effect':    'Deny',
                     'Principal': '*',
-                    'Action': 's3:*',
-                    'Resource': [
+                    'Action':    's3:*',
+                    'Resource':  [
                         'arn:aws:s3:::{}/*'.format(bucket),
                         'arn:aws:s3:::{}'.format(bucket)
                     ],
@@ -130,23 +128,37 @@ def generate_s3_bucket(bucket, **kwargs):
             ]
         })
     }
+    bucket_dict['resource']['aws_s3_bucket_logging'][slug] = {
+        "bucket":        "${aws_s3_bucket." + slug + ".id}",
+        "target_bucket": "${aws_s3_bucket.logging_bucket.id}",
+        "target_prefix": '{}/'.format(bucket)
+    }
 
-    if sse_algorithm == 'aws:kms':
-        s3_bucket['server_side_encryption_configuration']['rule'][
-            'apply_server_side_encryption_by_default']['kms_master_key_id'] = (
-                '${aws_kms_key.server_side_encryption.key_id}')
+    sse_algorithm = kwargs.get('sse_algorithm') or "aws:kms"
+    assebd = {
+        "sse_algorithm": sse_algorithm
+    }
+    if sse_algorithm == "aws:kms":
+        assebd["kms_master_key_id"] = '${aws_kms_key.server_side_encryption.key_id}'
 
-    lifecycle_rule = kwargs.get('lifecycle_rule')
+    bucket_dict['resource']['aws_s3_bucket_server_side_encryption_configuration']['slug'] = {
+        "bucket":        "${aws_s3_bucket." + slug + ".id}",
+        "rule": {
+            "apply_server_side_encryption_by_default": assebd
+        }
+    }
+
+    lifecycle_rule = kwargs.get('lifecycle')
     if lifecycle_rule:
-        s3_bucket['lifecycle_rule'] = lifecycle_rule
+        bucket_dict['resource']['aws_s3_bucket_lifecycle_configuration'][slug] = lifecycle_rule
 
-    acl = kwargs.get('acl')
-    if acl:
-        s3_bucket['acl'] = acl
+    acl = kwargs.get('acl') or "private"
+    bucket_dict['resource']['aws_s3_bucket_acl'][slug] = {
+        "bucket": "${aws_s3_bucket." + slug + ".id}",
+        "acl":    acl
+    }
 
-
-
-    return s3_bucket
+    return bucket_dict
 
 
 def generate_main(config, init=False):
@@ -179,15 +191,15 @@ def generate_main(config, init=False):
     else:
         terraform_bucket_name, _ = terraform_state_bucket(config)
         main_dict['terraform']['backend']['s3'] = {
-            'bucket': terraform_bucket_name,
-            'key': config['global'].get('terraform', {}).get(
+            'bucket':         terraform_bucket_name,
+            'key':            config['global'].get('terraform', {}).get(
                 'state_key_name',
                 'streamalert_state/terraform.tfstate'
             ),
-            'region': config['global']['account']['region'],
-            'encrypt': True,
+            'region':         config['global']['account']['region'],
+            'encrypt':        True,
             'dynamodb_table': state_lock_table_name,
-            'kms_key_id': 'alias/{}'.format(
+            'kms_key_id':     'alias/{}'.format(
                 config['global']['account'].get(
                     'kms_key_alias',
                     '{}_streamalert_secrets'.format(config['global']['account']['prefix'])
@@ -197,28 +209,23 @@ def generate_main(config, init=False):
 
     # Configure initial S3 buckets
     streamalerts_bucket_name = firehose_alerts_bucket(config)
-    main_dict['resource']['aws_s3_bucket'] = {
-        'streamalerts': generate_s3_bucket(
-            bucket=streamalerts_bucket_name
-        )
-    }
-    main_dict['resource']['aws_s3_bucket_logging']['streamalerts'] = {
-        "bucket":        "${aws_s3_bucket.streamalerts.id}",
-        "target_bucket": "${aws_s3_bucket.logging_bucket.id}",
-        "target_prefix": '{}/'.format(streamalerts_bucket_name)
-    }
+    streamalerts_bucket = generate_s3_bucket(
+        bucket=streamalerts_bucket_name,
+        slug='streamalerts'
+    )
+    main_dict = {**main_dict, **streamalerts_bucket}
 
     # Configure remote state locking table
     main_dict['resource']['aws_dynamodb_table'] = {
         'terraform_remote_state_lock': {
-            'name': state_lock_table_name,
+            'name':         state_lock_table_name,
             'billing_mode': 'PAY_PER_REQUEST',
-            'hash_key': 'LockID',
-            'attribute': {
+            'hash_key':     'LockID',
+            'attribute':    {
                 'name': 'LockID',
                 'type': 'S'
             },
-            'tags': {
+            'tags':         {
                 'Name': 'StreamAlert'
             }
         }
@@ -226,46 +233,36 @@ def generate_main(config, init=False):
 
     # Create bucket for S3 access logs (if applicable)
     if create_logging_bucket:
-        main_dict['resource']['aws_s3_bucket']['logging_bucket'] = generate_s3_bucket(
+        logging_bucket = generate_s3_bucket(
             bucket=logging_bucket,
-            sse_algorithm='AES256'  # SSE-KMS doesn't seem to work with access logs
-        )
-        main_dict['resource']['aws_s3_bucket_acl']['logging_bucket'] = {
-            "bucket": "${aws_s3_bucket.logging_bucket.id}",
-            "acl": "log-delivery-write"
-        }
-        main_dict['resource']['aws_s3_bucket_lifecycle_configuration']['logging_bucket'] = {
-            "bucket": "${aws_s3_bucket.logging_bucket.id}",
-            "rule": {
-                'id': '${aws_s3_bucket.logging_bucket.id}_lifecycle',
-                'filter': {
-                    'prefix': '/'
-                },
-                'status': 'Enabled',
-                'transition': {
-                    'days': 365,
-                    'storage_class': 'GLACIER'
+            slug='logging_bucket',
+            sse_algorithm='AES256',
+            acl="log-deliver-write",
+            lifecycle={
+                "bucket": "${aws_s3_bucket.logging_bucket.id}",
+                "rule":   {
+                    'id':         '${aws_s3_bucket.logging_bucket.id}_lifecycle',
+                    'filter':     {
+                        'prefix': '/'
+                    },
+                    'status':     'Enabled',
+                    'transition': {
+                        'days':          365,
+                        'storage_class': 'GLACIER'
+                    }
                 }
             }
-        }
-        main_dict['resource']['aws_s3_bucket_logging']['logging_bucket'] = {
-            "bucket": "${aws_s3_bucket.logging_bucket.id}",
-            "target_bucket": "${aws_s3_bucket.logging_bucket.id}",
-            "target_prefix": '{}/'.format(logging_bucket)
-        }
-
+        )
+        main_dict = {**main_dict, **logging_bucket}
 
     terraform_bucket_name, create_state_bucket = terraform_state_bucket(config)
     # Create bucket for Terraform state (if applicable)
     if create_state_bucket:
-        main_dict['resource']['aws_s3_bucket']['terraform_remote_state'] = generate_s3_bucket(
-            bucket=terraform_bucket_name
+        state_bucket = generate_s3_bucket(
+            bucket=terraform_bucket_name,
+            slug="terraform_remote_state"
         )
-        main_dict['resource']['aws_s3_bucket_logging']['terraform_remote_state'] = {
-            "bucket":        "${aws_s3_bucket.terraform_remote_state.id}",
-            "target_bucket": "${aws_s3_bucket.logging_bucket.id}",
-            "target_prefix": '{}/'.format(terraform_bucket_name)
-        }
+        main_dict = {**main_dict, **state_bucket}
 
     # Setup Firehose Delivery Streams
     generate_firehose(logging_bucket, main_dict, config)
@@ -276,27 +273,27 @@ def generate_main(config, init=False):
     # KMS Key and Alias creation
     main_dict['resource']['aws_kms_key']['server_side_encryption'] = {
         'enable_key_rotation': True,
-        'description': 'StreamAlert S3 Server-Side Encryption',
-        'policy': json.dumps({
-            'Version': '2012-10-17',
+        'description':         'StreamAlert S3 Server-Side Encryption',
+        'policy':              json.dumps({
+            'Version':   '2012-10-17',
             'Statement': [
                 {
-                    'Sid': 'Enable IAM User Permissions',
-                    'Effect': 'Allow',
+                    'Sid':       'Enable IAM User Permissions',
+                    'Effect':    'Allow',
                     'Principal': {
                         'AWS': 'arn:aws:iam::{}:root'.format(
                             config['global']['account']['aws_account_id']
                         )
                     },
-                    'Action': 'kms:*',
-                    'Resource': '*'
+                    'Action':    'kms:*',
+                    'Resource':  '*'
                 },
                 {
-                    'Sid': 'Allow principals in the account to use the key',
-                    'Effect': 'Allow',
+                    'Sid':       'Allow principals in the account to use the key',
+                    'Effect':    'Allow',
                     'Principal': '*',
-                    'Action': ['kms:Decrypt', 'kms:GenerateDataKey*', 'kms:Encrypt'],
-                    'Resource': '*',
+                    'Action':    ['kms:Decrypt', 'kms:GenerateDataKey*', 'kms:Encrypt'],
+                    'Resource':  '*',
                     'Condition': {
                         'StringEquals': {
                             'kms:CallerAccount': config['global']['account']['aws_account_id']
@@ -307,16 +304,16 @@ def generate_main(config, init=False):
         })
     }
     main_dict['resource']['aws_kms_alias']['server_side_encryption'] = {
-        'name': 'alias/{}_server-side-encryption'.format(config['global']['account']['prefix']),
+        'name':          'alias/{}_server-side-encryption'.format(config['global']['account']['prefix']),
         'target_key_id': '${aws_kms_key.server_side_encryption.key_id}'
     }
 
     main_dict['resource']['aws_kms_key']['streamalert_secrets'] = {
         'enable_key_rotation': True,
-        'description': 'StreamAlert secret management'
+        'description':         'StreamAlert secret management'
     }
     main_dict['resource']['aws_kms_alias']['streamalert_secrets'] = {
-        'name': 'alias/{}'.format(
+        'name':          'alias/{}'.format(
             config['global']['account'].get(
                 'kms_key_alias',
                 '{}_streamalert_secrets'.format(config['global']['account']['prefix'])
@@ -390,7 +387,6 @@ def generate_cluster(config, cluster_name):
     generate_apps(cluster_name, cluster_dict, config)
 
     return cluster_dict
-
 
 
 class TerraformGenerateCommand(CLICommand):
@@ -572,22 +568,22 @@ def _generate_lookup_tables_settings(config):
 
     if dynamodb_tables:
         generated_config['module']['lookup_tables_iam_dynamodb'] = {
-            'source': './modules/tf_lookup_tables_dynamodb',
+            'source':          './modules/tf_lookup_tables_dynamodb',
             'dynamodb_tables': sorted(dynamodb_tables),
-            'roles': sorted(roles),
-            'role_count': len(roles),
-            'account_id': config['global']['account']['aws_account_id'],
-            'region': config['global']['account']['region'],
-            'prefix': config['global']['account']['prefix'],
+            'roles':           sorted(roles),
+            'role_count':      len(roles),
+            'account_id':      config['global']['account']['aws_account_id'],
+            'region':          config['global']['account']['region'],
+            'prefix':          config['global']['account']['prefix'],
         }
 
     if s3_buckets:
         generated_config['module']['lookup_tables_iam_s3'] = {
-            'source': './modules/tf_lookup_tables_s3',
+            'source':     './modules/tf_lookup_tables_s3',
             's3_buckets': sorted(s3_buckets),
-            'roles': sorted(roles),
+            'roles':      sorted(roles),
             'role_count': len(roles),
-            'prefix': config['global']['account']['prefix'],
+            'prefix':     config['global']['account']['prefix'],
         }
 
     _create_terraform_module_file(generated_config, tf_file_name)
@@ -607,6 +603,7 @@ def _generate_streamquery_module(config):
         tf_file_name
     )
 
+
 def _generate_artifact_extractor_module(config):
     tf_file_name = os.path.join(config.build_directory, 'artifact_extractor.tf.json')
     if 'artifact_extractor' in config['global']['infrastructure']:
@@ -615,6 +612,7 @@ def _generate_artifact_extractor_module(config):
             return
 
         remove_temp_terraform_file(tf_file_name)
+
 
 def generate_global_lambda_settings(
         config,
@@ -677,16 +675,16 @@ def _generate_global_module(config):
     )
 
     global_module = {
-        'source': './modules/tf_globals',
-        'account_id': config['global']['account']['aws_account_id'],
-        'region': config['global']['account']['region'],
-        'prefix': config['global']['account']['prefix'],
-        'kms_key_arn': '${aws_kms_key.server_side_encryption.arn}',
+        'source':               './modules/tf_globals',
+        'account_id':           config['global']['account']['aws_account_id'],
+        'region':               config['global']['account']['region'],
+        'prefix':               config['global']['account']['prefix'],
+        'kms_key_arn':          '${aws_kms_key.server_side_encryption.arn}',
         'rules_engine_timeout': config['lambda']['rules_engine_config']['timeout'],
-        'sqs_use_prefix': use_prefix,
-        'alerts_db_name': get_database_name(config),
-        'alerts_file_format': get_data_file_format(config),
-        'alerts_schema': generate_alerts_table_schema()
+        'sqs_use_prefix':       use_prefix,
+        'alerts_db_name':       get_database_name(config),
+        'alerts_file_format':   get_data_file_format(config),
+        'alerts_schema':        generate_alerts_table_schema()
     }
 
     # The below code applies settings for resources only if the settings are explicitly
