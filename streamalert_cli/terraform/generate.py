@@ -15,6 +15,7 @@ limitations under the License.
 """
 import json
 import os
+from pprint import pprint
 
 from streamalert.shared.config import ConfigError, firehose_alerts_bucket
 from streamalert.shared.logger import get_logger
@@ -99,15 +100,52 @@ def generate_s3_bucket(bucket, slug=None, **kwargs):
     if not slug:
         slug = bucket
 
-    sse_algorithm = kwargs.get('sse_algorithm', 'aws:kms')
-
     bucket_dict['resource']['aws_s3_bucket'][slug] = {
         'bucket':                               bucket,
         'force_destroy':                        kwargs.get('force_destroy', True),
-        'versioning':                           {
-            'enabled': kwargs.get('versioning', True)
-        },
-        'policy':                               json.dumps({
+    }
+
+    bucket_dict['resource']['aws_s3_bucket_logging'][slug] = {
+        "bucket":        "${aws_s3_bucket." + slug + ".id}",
+        "target_bucket": "${aws_s3_bucket.logging_bucket.id}",
+        "target_prefix": '{}/'.format(bucket)
+    }
+
+    sse_algorithm = kwargs.get('sse_algorithm', "aws:kms")
+    assebd = {
+        "sse_algorithm": sse_algorithm
+    }
+    if sse_algorithm == "aws:kms":
+        assebd["kms_master_key_id"] = '${aws_kms_key.server_side_encryption.key_id}'
+
+    bucket_dict['resource']['aws_s3_bucket_server_side_encryption_configuration']['slug'] = {
+        "bucket":        "${aws_s3_bucket." + slug + ".id}",
+        "rule": {
+            "apply_server_side_encryption_by_default": assebd
+        }
+    }
+
+    lifecycle_rule = kwargs.get('lifecycle')
+    if lifecycle_rule:
+        bucket_dict['resource']['aws_s3_bucket_lifecycle_configuration'][slug] = lifecycle_rule
+
+    acl = kwargs.get('acl', "private")
+    bucket_dict['resource']['aws_s3_bucket_acl'][slug] = {
+        "bucket": "${aws_s3_bucket." + slug + ".id}",
+        "acl":    acl
+    }
+
+    versioning_status = "Enabled" if kwargs.get('versioning', True) else "Disabled"
+    bucket_dict['resource']['aws_s3_bucket_versioning'][slug] = {
+        "bucket": "${aws_s3_bucket." + slug + ".id}",
+        "versioning_configuration": {
+            "status": versioning_status
+        }
+    }
+
+    bucket_dict['resource']['aws_s3_bucket_policy'][slug] = {
+        "bucket": "${aws_s3_bucket." + slug + ".id}",
+        "policy": json.dumps({
             'Version':   '2012-10-17',
             'Statement': [
                 {
@@ -128,37 +166,21 @@ def generate_s3_bucket(bucket, slug=None, **kwargs):
             ]
         })
     }
-    bucket_dict['resource']['aws_s3_bucket_logging'][slug] = {
-        "bucket":        "${aws_s3_bucket." + slug + ".id}",
-        "target_bucket": "${aws_s3_bucket.logging_bucket.id}",
-        "target_prefix": '{}/'.format(bucket)
-    }
-
-    sse_algorithm = kwargs.get('sse_algorithm') or "aws:kms"
-    assebd = {
-        "sse_algorithm": sse_algorithm
-    }
-    if sse_algorithm == "aws:kms":
-        assebd["kms_master_key_id"] = '${aws_kms_key.server_side_encryption.key_id}'
-
-    bucket_dict['resource']['aws_s3_bucket_server_side_encryption_configuration']['slug'] = {
-        "bucket":        "${aws_s3_bucket." + slug + ".id}",
-        "rule": {
-            "apply_server_side_encryption_by_default": assebd
-        }
-    }
-
-    lifecycle_rule = kwargs.get('lifecycle')
-    if lifecycle_rule:
-        bucket_dict['resource']['aws_s3_bucket_lifecycle_configuration'][slug] = lifecycle_rule
-
-    acl = kwargs.get('acl') or "private"
-    bucket_dict['resource']['aws_s3_bucket_acl'][slug] = {
-        "bucket": "${aws_s3_bucket." + slug + ".id}",
-        "acl":    acl
-    }
 
     return bucket_dict
+
+
+def deepupdate(original, update):
+    """
+    Recursively update a dict.
+    Subdict's won't be overwritten but also updated.
+    """
+    for key, value in original.items():
+        if key not in update:
+            update[key] = value
+        elif isinstance(value, dict):
+            deepupdate(value, update[key])
+    return update
 
 
 def generate_main(config, init=False):
@@ -213,7 +235,7 @@ def generate_main(config, init=False):
         bucket=streamalerts_bucket_name,
         slug='streamalerts'
     )
-    main_dict = {**main_dict, **streamalerts_bucket}
+    main_dict = deepupdate(main_dict, streamalerts_bucket)
 
     # Configure remote state locking table
     main_dict['resource']['aws_dynamodb_table'] = {
@@ -237,7 +259,7 @@ def generate_main(config, init=False):
             bucket=logging_bucket,
             slug='logging_bucket',
             sse_algorithm='AES256',
-            acl="log-deliver-write",
+            acl="log-delivery-write",
             lifecycle={
                 "bucket": "${aws_s3_bucket.logging_bucket.id}",
                 "rule":   {
@@ -253,7 +275,7 @@ def generate_main(config, init=False):
                 }
             }
         )
-        main_dict = {**main_dict, **logging_bucket_dict}
+        main_dict = deepupdate(main_dict, logging_bucket_dict)
 
     terraform_bucket_name, create_state_bucket = terraform_state_bucket(config)
     # Create bucket for Terraform state (if applicable)
@@ -262,7 +284,7 @@ def generate_main(config, init=False):
             bucket=terraform_bucket_name,
             slug="terraform_remote_state"
         )
-        main_dict = {**main_dict, **state_bucket}
+        main_dict = deepupdate(main_dict, state_bucket)
 
     # Setup Firehose Delivery Streams
     generate_firehose(logging_bucket, main_dict, config)
