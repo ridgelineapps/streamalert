@@ -77,7 +77,7 @@ def write_vars(config, **kwargs):
     )
 
 
-def generate_s3_bucket(bucket, logging, **kwargs):
+def generate_s3_bucket(bucket, **kwargs):
     """Generate an S3 Bucket dict
 
     Args:
@@ -101,10 +101,6 @@ def generate_s3_bucket(bucket, logging, **kwargs):
         'force_destroy': kwargs.get('force_destroy', True),
         'versioning': {
             'enabled': kwargs.get('versioning', True)
-        },
-        'logging': {
-            'target_bucket': logging,
-            'target_prefix': '{}/'.format(bucket)
         },
         'server_side_encryption_configuration': {
             'rule': {
@@ -147,6 +143,8 @@ def generate_s3_bucket(bucket, logging, **kwargs):
     acl = kwargs.get('acl')
     if acl:
         s3_bucket['acl'] = acl
+
+
 
     return s3_bucket
 
@@ -198,11 +196,16 @@ def generate_main(config, init=False):
         }
 
     # Configure initial S3 buckets
+    streamalerts_bucket_name = firehose_alerts_bucket(config)
     main_dict['resource']['aws_s3_bucket'] = {
         'streamalerts': generate_s3_bucket(
-            bucket=firehose_alerts_bucket(config),
-            logging=logging_bucket
+            bucket=streamalerts_bucket_name
         )
+    }
+    main_dict['resource']['aws_s3_bucket_logging']['streamalerts'] = {
+        "bucket":        "${aws_s3_bucket.streamalerts.id}",
+        "target_bucket": "${aws_s3_bucket.logging_bucket.id}",
+        "target_prefix": '{}/'.format(streamalerts_bucket_name)
     }
 
     # Configure remote state locking table
@@ -225,7 +228,6 @@ def generate_main(config, init=False):
     if create_logging_bucket:
         main_dict['resource']['aws_s3_bucket']['logging_bucket'] = generate_s3_bucket(
             bucket=logging_bucket,
-            logging=logging_bucket,
             sse_algorithm='AES256'  # SSE-KMS doesn't seem to work with access logs
         )
         main_dict['resource']['aws_s3_bucket_acl']['logging_bucket'] = {
@@ -235,13 +237,21 @@ def generate_main(config, init=False):
         main_dict['resource']['aws_s3_bucket_lifecycle_configuration']['logging_bucket'] = {
             "bucket": "${aws_s3_bucket.logging_bucket.id}",
             "rule": {
-                'prefix': '/',
-                'enabled': True,
+                'id': '${aws_s3_bucket.logging_bucket.id}_lifecycle',
+                'filter': {
+                    'prefix': '/'
+                },
+                'status': 'Enabled',
                 'transition': {
                     'days': 365,
                     'storage_class': 'GLACIER'
                 }
             }
+        }
+        main_dict['resource']['aws_s3_bucket_logging']['logging_bucket'] = {
+            "bucket": "${aws_s3_bucket.logging_bucket.id}",
+            "target_bucket": "${aws_s3_bucket.logging_bucket.id}",
+            "target_prefix": '{}/'.format(logging_bucket)
         }
 
 
@@ -249,9 +259,13 @@ def generate_main(config, init=False):
     # Create bucket for Terraform state (if applicable)
     if create_state_bucket:
         main_dict['resource']['aws_s3_bucket']['terraform_remote_state'] = generate_s3_bucket(
-            bucket=terraform_bucket_name,
-            logging=logging_bucket
+            bucket=terraform_bucket_name
         )
+        main_dict['resource']['aws_s3_bucket_logging']['terraform_remote_state'] = {
+            "bucket":        "${aws_s3_bucket.terraform_remote_state.id}",
+            "target_bucket": "${aws_s3_bucket.logging_bucket.id}",
+            "target_prefix": '{}/'.format(terraform_bucket_name)
+        }
 
     # Setup Firehose Delivery Streams
     generate_firehose(logging_bucket, main_dict, config)
