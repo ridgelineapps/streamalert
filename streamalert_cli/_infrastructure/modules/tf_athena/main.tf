@@ -7,7 +7,6 @@ resource "aws_athena_database" "streamalert" {
 // S3 Bucket: Athena Query Results and Metastore Bucket
 resource "aws_s3_bucket" "athena_results_bucket" {
   bucket        = var.results_bucket
-  acl           = "private"
   policy        = data.aws_iam_policy_document.athena_results_bucket.json
   force_destroy = false
 
@@ -33,6 +32,11 @@ resource "aws_s3_bucket" "athena_results_bucket" {
       }
     }
   }
+}
+
+resource "aws_s3_bucket_acl" "athena_results_bucket" {
+  bucket = aws_s3_bucket.athena_results_bucket.id
+  acl = "private"
 }
 
 // Policy for S3 bucket

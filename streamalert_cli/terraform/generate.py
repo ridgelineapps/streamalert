@@ -98,7 +98,6 @@ def generate_s3_bucket(bucket, logging, **kwargs):
 
     s3_bucket = {
         'bucket': bucket,
-        'acl': kwargs.get('acl', 'private'),
         'force_destroy': kwargs.get('force_destroy', True),
         'versioning': {
             'enabled': kwargs.get('versioning', True)
@@ -145,6 +144,10 @@ def generate_s3_bucket(bucket, logging, **kwargs):
     if lifecycle_rule:
         s3_bucket['lifecycle_rule'] = lifecycle_rule
 
+    acl = kwargs.get('acl')
+    if acl:
+        s3_bucket['acl'] = acl
+
     return s3_bucket
 
 
@@ -186,7 +189,6 @@ def generate_main(config, init=False):
             'region': config['global']['account']['region'],
             'encrypt': True,
             'dynamodb_table': state_lock_table_name,
-            'acl': 'private',
             'kms_key_id': 'alias/{}'.format(
                 config['global']['account'].get(
                     'kms_key_alias',
@@ -224,7 +226,6 @@ def generate_main(config, init=False):
         main_dict['resource']['aws_s3_bucket']['logging_bucket'] = generate_s3_bucket(
             bucket=logging_bucket,
             logging=logging_bucket,
-            acl='log-delivery-write',
             lifecycle_rule={
                 'prefix': '/',
                 'enabled': True,
@@ -235,6 +236,11 @@ def generate_main(config, init=False):
             },
             sse_algorithm='AES256'  # SSE-KMS doesn't seem to work with access logs
         )
+        main_dict['resource']['aws_s3_bucket_acl']['logging_bucket'] = {
+            "bucket": "${aws_s3_bucket.logging_bucket}",
+            "acl": "log-delivery-write"
+        }
+
 
     terraform_bucket_name, create_state_bucket = terraform_state_bucket(config)
     # Create bucket for Terraform state (if applicable)

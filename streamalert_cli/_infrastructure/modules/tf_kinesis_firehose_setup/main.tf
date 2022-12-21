@@ -28,7 +28,6 @@ data "aws_iam_policy_document" "streamalert_data" {
 
 resource "aws_s3_bucket" "streamalert_data" {
   bucket        = var.s3_bucket_name
-  acl           = "private"
   policy        = data.aws_iam_policy_document.streamalert_data.json
   force_destroy = false
 
@@ -53,4 +52,9 @@ resource "aws_s3_bucket" "streamalert_data" {
   tags = {
     Name = "StreamAlert"
   }
+}
+
+resource "aws_s3_bucket_acl" "streamalert_data" {
+  bucket = aws_s3_bucket.streamalert_data.id
+  acl    = "private"
 }
