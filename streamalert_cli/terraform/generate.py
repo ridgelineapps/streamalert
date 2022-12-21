@@ -233,7 +233,7 @@ def generate_main(config, init=False):
 
     # Create bucket for S3 access logs (if applicable)
     if create_logging_bucket:
-        logging_bucket = generate_s3_bucket(
+        logging_bucket_dict = generate_s3_bucket(
             bucket=logging_bucket,
             slug='logging_bucket',
             sse_algorithm='AES256',
@@ -253,7 +253,7 @@ def generate_main(config, init=False):
                 }
             }
         )
-        main_dict = {**main_dict, **logging_bucket}
+        main_dict = {**main_dict, **logging_bucket_dict}
 
     terraform_bucket_name, create_state_bucket = terraform_state_bucket(config)
     # Create bucket for Terraform state (if applicable)
