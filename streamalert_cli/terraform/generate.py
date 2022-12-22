@@ -15,7 +15,6 @@ limitations under the License.
 """
 import json
 import os
-from pprint import pprint
 
 from streamalert.shared.config import ConfigError, firehose_alerts_bucket
 from streamalert.shared.logger import get_logger
@@ -326,7 +325,9 @@ def generate_main(config, init=False):
         })
     }
     main_dict['resource']['aws_kms_alias']['server_side_encryption'] = {
-        'name':          'alias/{}_server-side-encryption'.format(config['global']['account']['prefix']),
+        'name':          'alias/{}_server-side-encryption'.format(
+            config['global']['account']['prefix']
+        ),
         'target_key_id': '${aws_kms_key.server_side_encryption.key_id}'
     }
 
