@@ -49,41 +49,36 @@ class TestTerraformGenerate:
         """CLI - Terraform Generate S3 Bucket """
         bucket = generate.generate_s3_bucket(
             bucket='unit.test.bucket',
-            logging='my.s3-logging.bucket',
+            slug='bucket',
             force_destroy=True
         )
 
         required_keys = {
             'bucket',
-            'acl',
             'force_destroy',
-            'versioning',
-            'logging',
-            'server_side_encryption_configuration',
-            'policy'
         }
 
         assert_equal(type(bucket), dict)
-        assert_equal(bucket['bucket'], 'unit.test.bucket')
-        assert_equal(set(bucket.keys()), required_keys)
+        assert_equal(bucket['resource']['aws_s3_bucket']['bucket'], 'unit.test.bucket')
+        assert_equal(set(bucket['resource']['aws_s3_bucket']['bucket'].keys()), required_keys)
 
     def test_generate_s3_bucket_lifecycle(self):
         """CLI - Terraform Generate S3 Bucket with Lifecycle"""
         bucket = generate.generate_s3_bucket(
             bucket='unit.test.bucket',
-            logging='my.s3-logging.bucket',
+            slug='bucket',
             force_destroy=False,
-            lifecycle_rule={
+            lifecycle={
                 'prefix': 'logs/',
                 'enabled': True,
                 'transition': {'days': 30, 'storage_class': 'GLACIER'}
             }
         )
 
-        assert_equal(bucket['lifecycle_rule']['prefix'], 'logs/')
-        assert_equal(bucket['force_destroy'], False)
-        assert_equal(type(bucket['lifecycle_rule']), dict)
-        assert_equal(type(bucket['versioning']), dict)
+        assert_equal(bucket['resource']['aws_s3_bucket_lifecycle_configuration']['bucket']['prefix'], 'logs/')
+        assert_equal(bucket['resource']['aws_s3_bucket']['bucket']['force_destroy'], False)
+        assert_equal(type(bucket['resource']['aws_s3_bucket_lifecycle_configuration']['bucket']), dict)
+        assert_equal(type(bucket['resource']['aws_s3_bucket_versioning']['bucket']), dict)
 
     def test_generate_main(self):
         """CLI - Terraform Generate Main"""
