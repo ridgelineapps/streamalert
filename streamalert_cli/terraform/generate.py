@@ -117,7 +117,7 @@ def generate_s3_bucket(bucket, slug=None, **kwargs):
     if sse_algorithm == "aws:kms":
         assebd["kms_master_key_id"] = '${aws_kms_key.server_side_encryption.key_id}'
 
-    bucket_dict['resource']['aws_s3_bucket_server_side_encryption_configuration']['slug'] = {
+    bucket_dict['resource']['aws_s3_bucket_server_side_encryption_configuration'][slug] = {
         "bucket":        "${aws_s3_bucket." + slug + ".id}",
         "rule": {
             "apply_server_side_encryption_by_default": assebd
@@ -351,7 +351,7 @@ def generate_main(config, init=False):
         main_dict['resource']['aws_sns_topic']['monitoring'] = {
             'name': topic_name
         }
-
+    print(main_dict)
     return main_dict
 
 
