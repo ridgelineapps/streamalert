@@ -13,15 +13,17 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 """
-from mock import ANY, Mock, patch
 import json
+
+from mock import Mock, patch
 
 from nose.tools import (assert_equal, assert_dict_equal, assert_false, assert_raises, assert_true)
 
 from streamalert.shared.exceptions import ConfigError
 from streamalert_cli.config import CLIConfig
-from streamalert_cli.terraform import (common, cloudtrail, cloudwatch_destinations, cloudwatch_events, flow_logs,
-    generate)
+from streamalert_cli.terraform import (common, cloudtrail, cloudwatch_destinations,
+                                       cloudwatch_events, flow_logs, generate
+                                       )
 
 
 @patch('streamalert_cli.terraform.generate.write_vars', Mock())
@@ -37,23 +39,42 @@ class TestTerraformGenerate:
 
     def test_generate_s3_bucket(self):
         """CLI - Terraform Generate S3 Bucket """
-        bucket = generate.generate_s3_bucket(bucket='unit.test.bucket', slug='bucket-slug', force_destroy=True)
+        bucket = generate.generate_s3_bucket(bucket='unit.test.bucket', slug='bucket-slug',
+                                             force_destroy=True
+                                             )
 
         required_keys = {'bucket', 'force_destroy', }
 
         assert_equal(type(bucket['resource']['aws_s3_bucket']['bucket-slug']), dict)
-        assert_equal(bucket['resource']['aws_s3_bucket']['bucket-slug']['bucket'], 'unit.test.bucket')
+        assert_equal(bucket['resource']['aws_s3_bucket']['bucket-slug']['bucket'],
+                     'unit.test.bucket'
+                     )
         assert_equal(set(bucket['resource']['aws_s3_bucket']['bucket-slug'].keys()), required_keys)
 
     def test_generate_s3_bucket_lifecycle(self):
         """CLI - Terraform Generate S3 Bucket with Lifecycle"""
-        bucket = generate.generate_s3_bucket(bucket='unit.test.bucket', slug='bucket-slug', force_destroy=False, lifecycle={
-            'prefix': 'logs/', 'enabled': True, 'transition': {'days': 30, 'storage_class': 'GLACIER'}
-        })
+        bucket = generate.generate_s3_bucket(
+            bucket='unit.test.bucket',
+            slug='bucket-slug',
+            force_destroy=False,
+            lifecycle={
+                'prefix':     'logs/',
+                'enabled':    True,
+                'transition': {
+                    'days':          30,
+                    'storage_class': 'GLACIER'
+                }
+            }
+            )
 
-        assert_equal(bucket['resource']['aws_s3_bucket_lifecycle_configuration']['bucket-slug']['prefix'], 'logs/')
+        assert_equal(
+            bucket['resource']['aws_s3_bucket_lifecycle_configuration']['bucket-slug']['prefix'],
+            'logs/'
+        )
         assert_equal(bucket['resource']['aws_s3_bucket']['bucket-slug']['force_destroy'], False)
-        assert_equal(type(bucket['resource']['aws_s3_bucket_lifecycle_configuration']['bucket-slug']), dict)
+        assert_equal(
+            type(bucket['resource']['aws_s3_bucket_lifecycle_configuration']['bucket-slug']), dict
+        )
         assert_equal(type(bucket['resource']['aws_s3_bucket_versioning']['bucket-slug']), dict)
 
     def test_generate_main(self):
@@ -61,90 +82,139 @@ class TestTerraformGenerate:
         tf_main = generate.generate_main(config=self.config, init=False)
 
         tf_main_expected = {
-            'terraform':   {
+            'terraform': {
                 'backend': {
                     's3': {
                         'bucket':         'unit-test-streamalert-terraform-state',
-                        'key':            'streamalert_state/terraform.tfstate', 'region': 'us-west-1',
-                        'dynamodb_table': 'unit-test_streamalert_terraform_state_lock', 'encrypt': True,
+                        'key':            'streamalert_state/terraform.tfstate',
+                        'region':         'us-west-1',
+                        'dynamodb_table': 'unit-test_streamalert_terraform_state_lock',
+                        'encrypt':        True,
                         'kms_key_id':     'alias/alternate-alias'
                     }
                 }
-            }, 'resource': {
-                'aws_s3_bucket':                                         {
+            },
+            'resource': {
+                'aws_s3_bucket': {
                     'terraform_remote_state': {
-                        'bucket': 'unit-test-streamalert-terraform-state', 'force_destroy': True
-                    }, 'logging_bucket':      {'bucket': 'unit-test-streamalert-s3-logging', 'force_destroy': True},
-                    'streamalerts':           {'bucket': 'unit-test-streamalerts', 'force_destroy': True}
-                }, 'aws_s3_bucket_logging':                              {
+                        'bucket':        'unit-test-streamalert-terraform-state',
+                        'force_destroy': True
+                    },
+                    'logging_bucket': {
+                        'bucket':        'unit-test-streamalert-s3-logging',
+                        'force_destroy': True
+                    },
+                    'streamalerts': {
+                        'bucket':        'unit-test-streamalerts',
+                        'force_destroy': True
+                    }
+                },
+                'aws_s3_bucket_logging': {
                     'terraform_remote_state': {
                         'bucket':        '${aws_s3_bucket.terraform_remote_state.id}',
                         'target_bucket': '${aws_s3_bucket.logging_bucket.id}',
                         'target_prefix': 'unit-test-streamalert-terraform-state/'
-                    }, 'logging_bucket':      {
+                    },
+                    'logging_bucket': {
                         'bucket':        '${aws_s3_bucket.logging_bucket.id}',
                         'target_bucket': '${aws_s3_bucket.logging_bucket.id}',
                         'target_prefix': 'unit-test-streamalert-s3-logging/'
-                    }, 'streamalerts':        {
+                    },
+                    'streamalerts': {
                         'bucket':        '${aws_s3_bucket.streamalerts.id}',
                         'target_bucket': '${aws_s3_bucket.logging_bucket.id}',
                         'target_prefix': 'unit-test-streamalerts/'
                     }
-                }, 'aws_s3_bucket_server_side_encryption_configuration': {
-                    'terraform_remote_state': {
-                        'bucket': '${aws_s3_bucket.terraform_remote_state.id}', 'rule': {
-                            'apply_server_side_encryption_by_default': {
-                                'sse_algorithm':     'aws:kms',
-                                'kms_master_key_id': '${aws_kms_key.server_side_encryption.key_id}'
-                            }
-                        }
-                    }, 'logging_bucket':      {
-                        'bucket': '${aws_s3_bucket.logging_bucket.id}',
-                        'rule':   {'apply_server_side_encryption_by_default': {'sse_algorithm': 'AES256'}}
-                    }, 'streamalerts':        {
-                        'bucket': '${aws_s3_bucket.streamalerts.id}', 'rule': {
-                            'apply_server_side_encryption_by_default': {
-                                'sse_algorithm':     'aws:kms',
-                                'kms_master_key_id': '${aws_kms_key.server_side_encryption.key_id}'
-                            }
-                        }
-                    }
-                }, 'aws_s3_bucket_acl':                                  {
-                    'terraform_remote_state': {
-                        'bucket': '${aws_s3_bucket.terraform_remote_state.id}', 'acl': 'private'
-                    }, 'logging_bucket':      {
-                        'bucket': '${aws_s3_bucket.logging_bucket.id}', 'acl': 'log-delivery-write'
-                    }, 'streamalerts':        {'bucket': '${aws_s3_bucket.streamalerts.id}', 'acl': 'private'}
-                }, 'aws_s3_bucket_versioning':                           {
-                    'terraform_remote_state': {
-                        'bucket':                   '${aws_s3_bucket.terraform_remote_state.id}',
-                        'versioning_configuration': {'status': 'Enabled'}
-                    }, 'logging_bucket':      {
-                        'bucket':                   '${aws_s3_bucket.logging_bucket.id}',
-                        'versioning_configuration': {'status': 'Enabled'}
-                    }, 'streamalerts':        {
-                        'bucket': '${aws_s3_bucket.streamalerts.id}', 'versioning_configuration': {'status': 'Enabled'}
-                    }
-                }, 'aws_s3_bucket_policy':                               {
+                },
+                'aws_s3_bucket_server_side_encryption_configuration': {
                     'terraform_remote_state': {
                         'bucket': '${aws_s3_bucket.terraform_remote_state.id}',
-                        'policy': '{"Version": "2012-10-17", "Statement": [{"Sid": "ForceSSLOnlyAccess", '
+                        'rule': {
+                            'apply_server_side_encryption_by_default': {
+                                'sse_algorithm':     'aws:kms',
+                                'kms_master_key_id': '${aws_kms_key.server_side_encryption.key_id}'
+                            }
+                        }
+                    },
+                    'logging_bucket': {
+                        'bucket': '${aws_s3_bucket.logging_bucket.id}',
+                        'rule': {
+                            'apply_server_side_encryption_by_default': {
+                                'sse_algorithm': 'AES256'
+                            }
+                        }
+                    },
+                    'streamalerts': {
+                        'bucket': '${aws_s3_bucket.streamalerts.id}',
+                        'rule': {
+                            'apply_server_side_encryption_by_default': {
+                                'sse_algorithm':     'aws:kms',
+                                'kms_master_key_id': '${aws_kms_key.server_side_encryption.key_id}'
+                            }
+                        }
+                    }
+                },
+                'aws_s3_bucket_acl': {
+                    'terraform_remote_state': {
+                        'bucket': '${aws_s3_bucket.terraform_remote_state.id}',
+                        'acl':    'private'
+                    },
+                    'logging_bucket': {
+                        'bucket': '${aws_s3_bucket.logging_bucket.id}',
+                        'acl':    'log-delivery-write'
+                    },
+                    'streamalerts': {
+                        'bucket': '${aws_s3_bucket.streamalerts.id}',
+                        'acl':    'private'
+                    }
+                },
+                'aws_s3_bucket_versioning': {
+                    'terraform_remote_state': {
+                        'bucket':                   '${aws_s3_bucket.terraform_remote_state.id}',
+                        'versioning_configuration': {
+                            'status': 'Enabled'
+                        }
+                    },
+                    'logging_bucket': {
+                        'bucket':                   '${aws_s3_bucket.logging_bucket.id}',
+                        'versioning_configuration': {
+                            'status': 'Enabled'
+                        }
+                    },
+                    'streamalerts': {
+                        'bucket':                   '${aws_s3_bucket.streamalerts.id}',
+                        'versioning_configuration': {
+                            'status': 'Enabled'
+                        }
+                    }
+                },
+                'aws_s3_bucket_policy': {
+                    'terraform_remote_state': {
+                        'bucket': '${aws_s3_bucket.terraform_remote_state.id}',
+                        'policy': '{"Version": "2012-10-17", "Statement": [{"Sid": '
+                                  '"ForceSSLOnlyAccess", '
                                   '"Effect": "Deny", '
                                   '"Principal": "*", "Action": "s3:*", "Resource": ['
                                   '"arn:aws:s3:::unit-test-streamalert-terraform-state/*", '
-                                  '"arn:aws:s3:::unit-test-streamalert-terraform-state"], "Condition": {"Bool": {'
+                                  '"arn:aws:s3:::unit-test-streamalert-terraform-state"], '
+                                  '"Condition": {"Bool": {'
                                   '"aws:SecureTransport": "false"}}}]}'
-                    }, 'logging_bucket':      {
+                    },
+                    'logging_bucket': {
                         'bucket': '${aws_s3_bucket.logging_bucket.id}',
-                        'policy': '{"Version": "2012-10-17", "Statement": [{"Sid": "ForceSSLOnlyAccess", '
+                        'policy': '{"Version": "2012-10-17", "Statement": [{"Sid": '
+                                  '"ForceSSLOnlyAccess", '
                                   '"Effect": "Deny", '
                                   '"Principal": "*", "Action": "s3:*", "Resource": ['
                                   '"arn:aws:s3:::unit-test-streamalert-s3-logging/*", '
-                                  '"arn:aws:s3:::unit-test-streamalert-s3-logging"], "Condition": {"Bool": {'
+                                  '"arn:aws:s3:::unit-test-streamalert-s3-logging"], "Condition": '
+                                  '{"Bool": {'
                                   '"aws:SecureTransport": "false"}}}]}'
-                    }, 'streamalerts':        {
+                    },
+                    'streamalerts': {
                         'bucket': '${aws_s3_bucket.streamalerts.id}',
-                        'policy': '{"Version": "2012-10-17", "Statement": [{"Sid": "ForceSSLOnlyAccess", '
+                        'policy': '{"Version": "2012-10-17", "Statement": [{"Sid": '
+                                  '"ForceSSLOnlyAccess", '
                                   '"Effect": "Deny", '
                                   '"Principal": "*", "Action": "s3:*", "Resource": ['
                                   '"arn:aws:s3:::unit-test-streamalerts/*", '
@@ -152,64 +222,78 @@ class TestTerraformGenerate:
                                   '"aws:SecureTransport": '
                                   '"false"}}}]}'
                     }
-                }, 'aws_s3_bucket_lifecycle_configuration':              {
+                },
+                'aws_s3_bucket_lifecycle_configuration': {
                     'logging_bucket': {
-                        'bucket': '${aws_s3_bucket.logging_bucket.id}', 'rule': {
-                            'id':     '${aws_s3_bucket.logging_bucket.id}_lifecycle', 'filter': {'prefix': '/'},
-                            'status': 'Enabled', 'transition': {'days': 365, 'storage_class': 'GLACIER'}
+                        'bucket': '${aws_s3_bucket.logging_bucket.id}',
+                        'rule': {
+                            'id':         '${aws_s3_bucket.logging_bucket.id}_lifecycle',
+                            'filter': {
+                                'prefix': '/'
+                            },
+                            'status':     'Enabled',
+                            'transition': {
+                                'days':          365,
+                                'storage_class': 'GLACIER'
+                            }
                         }
                     }
-                }, 'aws_dynamodb_table':                                 {
+                },
+                'aws_dynamodb_table': {
                     'terraform_remote_state_lock': {
-                        'name':     'unit-test_streamalert_terraform_state_lock', 'billing_mode': 'PAY_PER_REQUEST',
-                        'hash_key': 'LockID', 'attribute': {'name': 'LockID', 'type': 'S'},
-                        'tags':     {'Name': 'StreamAlert'}
+                        'name':         'unit-test_streamalert_terraform_state_lock',
+                        'billing_mode': 'PAY_PER_REQUEST',
+                        'hash_key':     'LockID',
+                        'attribute': {
+                            'name': 'LockID',
+                            'type': 'S'
+                        },
+                        'tags': {
+                            'Name': 'StreamAlert'
+                        }
                     }
-                }, 'aws_kms_key':                                        {
+                },
+                'aws_kms_key': {
                     'server_side_encryption': {
-                        'enable_key_rotation': True, 'description': 'StreamAlert S3 Server-Side Encryption',
-                        'policy':              '{"Version": "2012-10-17", "Statement": [{"Sid": "Enable IAM User '
-                                               'Permissions", "Effect": "Allow", "Principal": {"AWS": '
-                                               '"arn:aws:iam::12345678910:root"}, "Action": "kms:*", "Resource": '
-                                               '"*"}, {"Sid": "Allow principals in the account to use the key", '
-                                               '"Effect": "Allow", "Principal": "*", "Action": ["kms:Decrypt", '
-                                               '"kms:GenerateDataKey*", "kms:Encrypt"], "Resource": "*", "Condition": '
-                                               '{"StringEquals": {"kms:CallerAccount": "12345678910"}}}]}'
-                    }, 'streamalert_secrets': {
-                        'enable_key_rotation': True, 'description': 'StreamAlert secret management'
+                        'enable_key_rotation': True,
+                        'description':         'StreamAlert S3 Server-Side Encryption',
+                        'policy':              '{"Version": "2012-10-17", "Statement": [{"Sid": '
+                                               '"Enable IAM User '
+                                               'Permissions", "Effect": "Allow", "Principal": {'
+                                               '"AWS": '
+                                               '"arn:aws:iam::12345678910:root"}, "Action": '
+                                               '"kms:*", "Resource": '
+                                               '"*"}, {"Sid": "Allow principals in the account to '
+                                               'use the key", '
+                                               '"Effect": "Allow", "Principal": "*", "Action": ['
+                                               '"kms:Decrypt", '
+                                               '"kms:GenerateDataKey*", "kms:Encrypt"], '
+                                               '"Resource": "*", "Condition": '
+                                               '{"StringEquals": {"kms:CallerAccount": '
+                                               '"12345678910"}}}]}'
+                    },
+                    'streamalert_secrets': {
+                        'enable_key_rotation': True,
+                        'description':         'StreamAlert secret management'
                     }
-                }, 'aws_kms_alias':                                      {
+                },
+                'aws_kms_alias': {
                     'server_side_encryption': {
                         'name':          'alias/unit-test_server-side-encryption',
                         'target_key_id': '${aws_kms_key.server_side_encryption.key_id}'
-                    }, 'streamalert_secrets': {
-                        'name': 'alias/alternate-alias', 'target_key_id': '${aws_kms_key.streamalert_secrets.key_id}'
+                    },
+                    'streamalert_secrets': {
+                        'name':          'alias/alternate-alias',
+                        'target_key_id': '${aws_kms_key.streamalert_secrets.key_id}'
                     }
-                }, 'aws_sns_topic':                                      {
-                    'monitoring': {'name': 'unit-test_streamalert_monitoring'}
+                },
+                'aws_sns_topic': {
+                    'monitoring': {
+                        'name': 'unit-test_streamalert_monitoring'
+                    }
                 }
             }
         }
-
-        # def finddiff(d1, d2, path=""):
-        #     for k in d1:
-        #         if k in d2:
-        #             if type(d1[k]) is dict:
-        #                 finddiff(d1[k], d2[k], "%s -> %s" % (path, k) if path else k)
-        #             if d1[k] != d2[k]:
-        #                 result = ["%s: " % path, " - %s : %s" % (k, d1[k]), " + %s : %s" % (k, d2[k])]
-        #                 print("\n".join(result))
-        #         else:
-        #             print("%s%s as key not in d2\n" % ("%s: " % path if path else "", k))
-        #
-        # print("MAIN\n--------------------------------------------")
-        # print(json.loads(json.dumps(tf_main['resource'])))
-        # print("MAIN EXPECTED\n--------------------------------------------")
-        # print(tf_main_expected['resource'])
-        # print("----------------------------------------------------")
-        #
-        # finddiff(json.loads(json.dumps(tf_main['resource'])), tf_main_expected['resource'])
-
         assert_dict_equal(dict(tf_main['terraform']), tf_main_expected['terraform'])
         assert_dict_equal(json.loads(json.dumps(tf_main['resource'])), tf_main_expected['resource'])
 
@@ -227,7 +311,11 @@ class TestTerraformGenerate:
     def test_generate_main_with_firehose(self):
         """CLI - Terraform Generate Main with Firehose Enabled"""
         self.config['global']['infrastructure']['firehose'] = {
-            'enabled': True, 'bucket_name': 'my-data', 'buffer_size': 10, 'buffer_interval': 650, 'enabled_logs': {
+            'enabled':         True,
+            'bucket_name':     'my-data',
+            'buffer_size':     10,
+            'buffer_interval': 650,
+            'enabled_logs': {
                 'cloudwatch': {
                     'enable_alarm': False
                 }
@@ -236,23 +324,37 @@ class TestTerraformGenerate:
         tf_main = generate.generate_main(config=self.config, init=False)
 
         generated_modules = tf_main['module']
-        expected_kinesis_modules = {'kinesis_firehose_setup', 'kinesis_firehose_cloudwatch_test_match_types',
-            'kinesis_firehose_cloudwatch_test_match_types_2'}
+        expected_kinesis_modules = {'kinesis_firehose_setup',
+                                    'kinesis_firehose_cloudwatch_test_match_types',
+                                    'kinesis_firehose_cloudwatch_test_match_types_2'}
 
-        assert_true(all([expected_module in generated_modules for expected_module in expected_kinesis_modules]))
+        assert_true(all([expected_module in generated_modules for expected_module in
+                         expected_kinesis_modules]
+                        )
+                    )
 
-        assert_equal(generated_modules['kinesis_firehose_cloudwatch_test_match_types']['s3_bucket_name'], 'my-data')
-        assert_equal(generated_modules['kinesis_firehose_cloudwatch_test_match_types']['buffer_size'], 10)
-        assert_equal(generated_modules['kinesis_firehose_cloudwatch_test_match_types']['buffer_interval'], 650)
+        assert_equal(
+            generated_modules['kinesis_firehose_cloudwatch_test_match_types']['s3_bucket_name'],
+            'my-data'
+        )
+        assert_equal(
+            generated_modules['kinesis_firehose_cloudwatch_test_match_types']['buffer_size'], 10
+        )
+        assert_equal(
+            generated_modules['kinesis_firehose_cloudwatch_test_match_types']['buffer_interval'],
+            650
+        )
 
     def test_generate_main_alerts_firehose(self):
         """CLI - Terraform Generate Main with Alerts Firehose Config"""
         self.config['global']['infrastructure']['alerts_firehose'] = {
-            'bucket_name': 'test-bucket-name', 'buffer_interval': 600
+            'bucket_name':     'test-bucket-name',
+            'buffer_interval': 600
         }
         tf_main = generate.generate_main(config=self.config, init=False)
 
-        assert_equal(tf_main['module']['globals']['alerts_firehose_bucket_name'], 'test-bucket-name')
+        assert_equal(tf_main['module']['globals']['alerts_firehose_bucket_name'], 'test-bucket-name'
+                     )
         assert_equal(tf_main['module']['globals']['alerts_firehose_buffer_interval'], 600)
 
     def test_generate_flow_logs(self):
@@ -262,20 +364,33 @@ class TestTerraformGenerate:
 
         expected = {
             'module': {
-                'flow_logs_advanced':                                {
-                    'source':                                        './modules/tf_flow_logs', 'prefix': 'unit-test',
-                    'cluster':                                       'advanced', 'cloudwatch_logs_destination_arn': (
+                'flow_logs_advanced': {
+                    'source':                          './modules/tf_flow_logs',
+                    'prefix':                          'unit-test',
+                    'cluster':                         'advanced',
+                    'cloudwatch_logs_destination_arn': (
                         '${module.cloudwatch_logs_destination_advanced_us-west-1.'
-                        'cloudwatch_logs_destination_arn}'), 'vpcs': ['vpc-id-1', 'vpc-id-2'],
-                }, 'cloudwatch_logs_destination_advanced':           {
-                    'source':  './modules/tf_cloudwatch_logs_destination', 'prefix': 'unit-test', 'cluster': 'advanced',
-                    'regions': ['us-west-1'], 'destination_kinesis_stream_arn': '${module.kinesis_advanced.arn}'
-                }, 'cloudwatch_logs_destination_advanced_us-west-1': {
-                    'source': './modules/tf_cloudwatch_logs_destination/modules/destination', 'prefix': 'unit-test',
-                    'cluster': 'advanced', 'account_ids': ['12345678910'],
-                    'destination_kinesis_stream_arn': '${module.kinesis_advanced.arn}',
-                    'cloudwatch_logs_subscription_role_arn': ('${module.cloudwatch_logs_destination_advanced.'
-                                                              'cloudwatch_logs_subscription_role_arn}'), 'providers': {
+                        'cloudwatch_logs_destination_arn}'),
+                    'vpcs':                            ['vpc-id-1', 'vpc-id-2'],
+                },
+                'cloudwatch_logs_destination_advanced': {
+                    'source':                         './modules/tf_cloudwatch_logs_destination',
+                    'prefix':                         'unit-test',
+                    'cluster':                        'advanced',
+                    'regions':                        ['us-west-1'],
+                    'destination_kinesis_stream_arn': '${module.kinesis_advanced.arn}'
+                },
+                'cloudwatch_logs_destination_advanced_us-west-1': {
+                    'source':
+                        './modules/tf_cloudwatch_logs_destination/modules/destination',
+                    'prefix':                                'unit-test',
+                    'cluster':                               'advanced',
+                    'account_ids':                           ['12345678910'],
+                    'destination_kinesis_stream_arn':        '${module.kinesis_advanced.arn}',
+                    'cloudwatch_logs_subscription_role_arn': (
+                        '${module.cloudwatch_logs_destination_advanced.'
+                        'cloudwatch_logs_subscription_role_arn}'),
+                    'providers': {
                         'aws': 'aws.us-west-1'
                     }
                 }
@@ -288,17 +403,22 @@ class TestTerraformGenerate:
         """CLI - Terraform Generate CloudTrail Module, Minimal Settings"""
         cluster_name = 'advanced'
         self.config['clusters']['advanced']['modules']['cloudtrail'] = {
-            's3_settings':           {
-                'cross_account_ids': ['456789012345'], 'enable_events': False,
-            }, 'send_to_cloudwatch': False,
+            's3_settings': {
+                'cross_account_ids': ['456789012345'],
+                'enable_events':     False,
+            },
+            'send_to_cloudwatch': False,
         }
         cloudtrail.generate_cloudtrail(cluster_name, self.cluster_dict, self.config)
 
         expected = {
             'cloudtrail_advanced': {
                 'source':               './modules/tf_cloudtrail',
-                's3_cross_account_ids': ['12345678910', '456789012345'], 'primary_account_id': '12345678910',
-                'cluster':              'advanced', 'prefix': 'unit-test', 'region': 'us-west-1',
+                's3_cross_account_ids': ['12345678910', '456789012345'],
+                'primary_account_id':   '12345678910',
+                'cluster':              'advanced',
+                'prefix':               'unit-test',
+                'region':               'us-west-1',
                 's3_bucket_name':       'unit-test-advanced-streamalert-cloudtrail',
                 's3_logging_bucket':    'unit-test-streamalert-s3-logging',
             }
@@ -310,25 +430,35 @@ class TestTerraformGenerate:
         """CLI - Terraform Generate CloudTrail Module, With S3 Events"""
         cluster_name = 'advanced'
         self.config['clusters']['advanced']['modules']['cloudtrail'] = {
-            's3_settings':           {
-                'bucket_name': 'unit-test-bucket', 'cross_account_ids': ['456789012345'], 'enable_events': True,
-            }, 'send_to_cloudwatch': False,
+            's3_settings': {
+                'bucket_name':       'unit-test-bucket',
+                'cross_account_ids': ['456789012345'],
+                'enable_events':     True,
+            },
+            'send_to_cloudwatch': False,
         }
         cloudtrail.generate_cloudtrail(cluster_name, self.cluster_dict, self.config)
 
         expected = {
-            'cloudtrail_advanced':                                         {
+            'cloudtrail_advanced': {
                 'source':               './modules/tf_cloudtrail',
-                's3_cross_account_ids': ['12345678910', '456789012345'], 'primary_account_id': '12345678910',
-                'cluster':              'advanced', 'prefix': 'unit-test', 'region': 'us-west-1',
-                's3_bucket_name':       'unit-test-bucket', 's3_logging_bucket': 'unit-test-streamalert-s3-logging',
-            }, 'cloudtrail_s3_events_unit-test_advanced_unit-test-bucket': {
+                's3_cross_account_ids': ['12345678910', '456789012345'],
+                'primary_account_id':   '12345678910',
+                'cluster':              'advanced',
+                'prefix':               'unit-test',
+                'region':               'us-west-1',
+                's3_bucket_name':       'unit-test-bucket',
+                's3_logging_bucket':    'unit-test-streamalert-s3-logging',
+            },
+            'cloudtrail_s3_events_unit-test_advanced_unit-test-bucket': {
                 'source':                    './modules/tf_s3_events',
                 'lambda_role_id':            '${module.classifier_advanced_lambda.role_id}',
                 'lambda_function_alias':     '${module.classifier_advanced_lambda.function_alias}',
-                'lambda_function_alias_arn': ('${module.classifier_advanced_lambda.function_alias_arn}'),
+                'lambda_function_alias_arn': (
+                    '${module.classifier_advanced_lambda.function_alias_arn}'),
                 'lambda_function_name':      '${module.classifier_advanced_lambda.function_name}',
-                'bucket_name':               'unit-test-bucket', 'filters': [{
+                'bucket_name':               'unit-test-bucket',
+                'filters':                   [{
                     'filter_prefix': 'AWSLogs/12345678910/CloudTrail/'
                 }, {
                     'filter_prefix': 'AWSLogs/456789012345/CloudTrail/'
@@ -342,39 +472,59 @@ class TestTerraformGenerate:
         """CLI - Terraform Generate CloudTrail Module, With CloudWatch Logs"""
         cluster_name = 'advanced'
         self.config['clusters']['advanced']['modules']['cloudtrail'] = {
-            's3_settings':           {
+            's3_settings': {
                 'enable_events': False,
-            }, 'send_to_cloudwatch': True,
+            },
+            'send_to_cloudwatch': True,
         }
         cloudtrail.generate_cloudtrail(cluster_name, self.cluster_dict, self.config)
 
         expected = {
-            'cloudwatch_logs_destination_advanced':              {
-                'source':  './modules/tf_cloudwatch_logs_destination', 'prefix': 'unit-test', 'cluster': 'advanced',
-                'regions': ['us-west-1'], 'destination_kinesis_stream_arn': '${module.kinesis_advanced.arn}'
-            }, 'cloudwatch_logs_destination_advanced_us-west-1': {
+            'cloudwatch_logs_destination_advanced': {
+                'source':                         './modules/tf_cloudwatch_logs_destination',
+                'prefix':                         'unit-test',
+                'cluster':                        'advanced',
+                'regions':                        ['us-west-1'],
+                'destination_kinesis_stream_arn': '${module.kinesis_advanced.arn}'
+            },
+            'cloudwatch_logs_destination_advanced_us-west-1': {
                 'source':
                     './modules/tf_cloudwatch_logs_destination/modules/destination',
-                'prefix':                                             'unit-test', 'cluster': 'advanced',
-                'account_ids':                                        ['12345678910'],
-                'destination_kinesis_stream_arn':                     '${module.kinesis_advanced.arn}',
-                'cloudwatch_logs_subscription_role_arn':              ('${module.cloudwatch_logs_destination_advanced.'
-                                                                       'cloudwatch_logs_subscription_role_arn}'),
-                'providers':                                          {
+                'prefix':                                'unit-test',
+                'cluster':                               'advanced',
+                'account_ids':                           ['12345678910'],
+                'destination_kinesis_stream_arn':        '${'
+                                                         'module.kinesis_advanced.arn}',
+                'cloudwatch_logs_subscription_role_arn': (
+                    '${module.cloudwatch_logs_destination_advanced.'
+                    'cloudwatch_logs_subscription_role_arn}'),
+                'providers': {
                     'aws': 'aws.us-west-1'
                 }
-            }, 'cloudtrail_cloudwatch_advanced':                 {
-                'source':                     './modules/tf_cloudtrail/modules/tf_cloudtrail_cloudwatch',
-                'cluster':                    'advanced', 'prefix': 'unit-test', 'region': 'us-west-1',
-                'cloudwatch_destination_arn': ('${module.cloudwatch_logs_destination_advanced_us-west-1.'
-                                               'cloudwatch_logs_destination_arn}'),
-            }, 'cloudtrail_advanced':                            {
-                'source':                    './modules/tf_cloudtrail', 's3_cross_account_ids': ['12345678910'],
-                'primary_account_id':        '12345678910', 'cluster': 'advanced', 'prefix': 'unit-test',
-                'region':                    'us-west-1', 's3_bucket_name': 'unit-test-advanced-streamalert-cloudtrail',
-                's3_logging_bucket':         'unit-test-streamalert-s3-logging', 'cloudwatch_logs_role_arn': (
+            },
+            'cloudtrail_cloudwatch_advanced': {
+                'source':
+                    './modules/tf_cloudtrail/modules/tf_cloudtrail_cloudwatch',
+                'cluster':                    'advanced',
+                'prefix':                     'unit-test',
+                'region':                     'us-west-1',
+                'cloudwatch_destination_arn': (
+                    '${module.cloudwatch_logs_destination_advanced_us-west-1.'
+                    'cloudwatch_logs_destination_arn}'),
+            },
+            'cloudtrail_advanced': {
+                'source':                    './modules/tf_cloudtrail',
+                's3_cross_account_ids':      ['12345678910'],
+                'primary_account_id':        '12345678910',
+                'cluster':                   'advanced',
+                'prefix':                    'unit-test',
+                'region':                    'us-west-1',
+                's3_bucket_name':            'unit-test-advanced-streamalert-cloudtrail',
+                's3_logging_bucket':         'unit-test-streamalert-s3-logging',
+                'cloudwatch_logs_role_arn':  (
                     '${module.cloudtrail_cloudwatch_advanced.cloudtrail_to_cloudwatch_logs_role}'),
-                'cloudwatch_logs_group_arn': ('${module.cloudtrail_cloudwatch_advanced.cloudwatch_logs_group_arn}'),
+                'cloudwatch_logs_group_arn': (
+                    '${module.cloudtrail_cloudwatch_advanced.cloudwatch_logs_group_arn}'),
             },
         }
 
@@ -384,47 +534,69 @@ class TestTerraformGenerate:
         """CLI - Terraform Generate CloudTrail Module, With S3 and CloudWatch Logs"""
         cluster_name = 'advanced'
         self.config['clusters']['advanced']['modules']['cloudtrail'] = {
-            's3_settings':           {
-                'cross_account_ids': ['456789012345'], 'enable_events': True,
-            }, 'send_to_cloudwatch': True,
+            's3_settings': {
+                'cross_account_ids': ['456789012345'],
+                'enable_events':     True,
+            },
+            'send_to_cloudwatch': True,
         }
         cloudtrail.generate_cloudtrail(cluster_name, self.cluster_dict, self.config)
 
         expected = {
-            'cloudwatch_logs_destination_advanced':                                                 {
-                'source':  './modules/tf_cloudwatch_logs_destination', 'prefix': 'unit-test', 'cluster': 'advanced',
-                'regions': ['us-west-1'], 'destination_kinesis_stream_arn': '${module.kinesis_advanced.arn}'
-            }, 'cloudwatch_logs_destination_advanced_us-west-1':                                    {
+            'cloudwatch_logs_destination_advanced': {
+                'source':                         './modules/tf_cloudwatch_logs_destination',
+                'prefix':                         'unit-test',
+                'cluster':                        'advanced',
+                'regions':                        ['us-west-1'],
+                'destination_kinesis_stream_arn': '${module.kinesis_advanced.arn}'
+            },
+            'cloudwatch_logs_destination_advanced_us-west-1': {
                 'source':
                     './modules/tf_cloudwatch_logs_destination/modules/destination',
-                'prefix':                                             'unit-test', 'cluster': 'advanced',
-                'account_ids':                                        ['12345678910'],
-                'destination_kinesis_stream_arn':                     '${module.kinesis_advanced.arn}',
-                'cloudwatch_logs_subscription_role_arn':              ('${module.cloudwatch_logs_destination_advanced.'
-                                                                       'cloudwatch_logs_subscription_role_arn}'),
-                'providers':                                          {
+                'prefix':                                'unit-test',
+                'cluster':                               'advanced',
+                'account_ids':                           ['12345678910'],
+                'destination_kinesis_stream_arn':        '${module.kinesis_advanced.arn}',
+                'cloudwatch_logs_subscription_role_arn': (
+                    '${module.cloudwatch_logs_destination_advanced.'
+                    'cloudwatch_logs_subscription_role_arn}'),
+                'providers': {
                     'aws': 'aws.us-west-1'
                 }
-            }, 'cloudtrail_cloudwatch_advanced':                                                    {
-                'source':                     './modules/tf_cloudtrail/modules/tf_cloudtrail_cloudwatch',
-                'cluster':                    'advanced', 'prefix': 'unit-test', 'region': 'us-west-1',
-                'cloudwatch_destination_arn': ('${module.cloudwatch_logs_destination_advanced_us-west-1.'
-                                               'cloudwatch_logs_destination_arn}'),
-            }, 'cloudtrail_advanced':                                                               {
+            },
+            'cloudtrail_cloudwatch_advanced': {
+                'source':
+                    './modules/tf_cloudtrail/modules/tf_cloudtrail_cloudwatch',
+                'cluster':                    'advanced',
+                'prefix':                     'unit-test',
+                'region':                     'us-west-1',
+                'cloudwatch_destination_arn': (
+                    '${module.cloudwatch_logs_destination_advanced_us-west-1.'
+                    'cloudwatch_logs_destination_arn}'),
+            },
+            'cloudtrail_advanced': {
                 'source':                    './modules/tf_cloudtrail',
-                's3_cross_account_ids':      ['12345678910', '456789012345'], 'primary_account_id': '12345678910',
-                'cluster':                   'advanced', 'prefix': 'unit-test', 'region': 'us-west-1',
+                's3_cross_account_ids':      ['12345678910', '456789012345'],
+                'primary_account_id':        '12345678910',
+                'cluster':                   'advanced',
+                'prefix':                    'unit-test',
+                'region':                    'us-west-1',
                 's3_bucket_name':            'unit-test-advanced-streamalert-cloudtrail',
-                's3_logging_bucket':         'unit-test-streamalert-s3-logging', 'cloudwatch_logs_role_arn': (
+                's3_logging_bucket':         'unit-test-streamalert-s3-logging',
+                'cloudwatch_logs_role_arn':  (
                     '${module.cloudtrail_cloudwatch_advanced.cloudtrail_to_cloudwatch_logs_role}'),
-                'cloudwatch_logs_group_arn': ('${module.cloudtrail_cloudwatch_advanced.cloudwatch_logs_group_arn}'),
-            }, 'cloudtrail_s3_events_unit-test_advanced_unit-test-advanced-streamalert-cloudtrail': {
+                'cloudwatch_logs_group_arn': (
+                    '${module.cloudtrail_cloudwatch_advanced.cloudwatch_logs_group_arn}'),
+            },
+            'cloudtrail_s3_events_unit-test_advanced_unit-test-advanced-streamalert-cloudtrail': {
                 'source':                    './modules/tf_s3_events',
                 'lambda_role_id':            '${module.classifier_advanced_lambda.role_id}',
                 'lambda_function_alias':     '${module.classifier_advanced_lambda.function_alias}',
-                'lambda_function_alias_arn': ('${module.classifier_advanced_lambda.function_alias_arn}'),
+                'lambda_function_alias_arn': (
+                    '${module.classifier_advanced_lambda.function_alias_arn}'),
                 'lambda_function_name':      '${module.classifier_advanced_lambda.function_name}',
-                'bucket_name':               'unit-test-advanced-streamalert-cloudtrail', 'filters': [{
+                'bucket_name':               'unit-test-advanced-streamalert-cloudtrail',
+                'filters':                   [{
                     'filter_prefix': 'AWSLogs/456789012345/CloudTrail/'
                 }]
             },
@@ -434,33 +606,45 @@ class TestTerraformGenerate:
 
     def test_generate_cloudwatch_destinations(self):
         """CLI - Terraform Generate CloudWatch Destinations"""
-        cloudwatch_destinations.generate_cloudwatch_destinations('advanced', self.cluster_dict, self.config)
+        cloudwatch_destinations.generate_cloudwatch_destinations('advanced', self.cluster_dict,
+                                                                 self.config
+                                                                 )
 
         expected = {
-            'cloudwatch_logs_destination_advanced':              {
-                'source':                         './modules/tf_cloudwatch_logs_destination', 'prefix': 'unit-test',
-                'cluster':                        'advanced', 'regions': ['us-east-2', 'us-west-2'],
+            'cloudwatch_logs_destination_advanced': {
+                'source':                         './modules/tf_cloudwatch_logs_destination',
+                'prefix':                         'unit-test',
+                'cluster':                        'advanced',
+                'regions':                        ['us-east-2', 'us-west-2'],
                 'destination_kinesis_stream_arn': '${module.kinesis_advanced.arn}'
-            }, 'cloudwatch_logs_destination_advanced_us-east-2': {
+            },
+            'cloudwatch_logs_destination_advanced_us-east-2': {
                 'source':
                     './modules/tf_cloudwatch_logs_destination/modules/destination',
-                'prefix':                                              'unit-test', 'cluster': 'advanced',
-                'account_ids':                                         ['123456789012'],
-                'destination_kinesis_stream_arn':                      '${module.kinesis_advanced.arn}',
-                'cloudwatch_logs_subscription_role_arn':               ('${module.cloudwatch_logs_destination_advanced.'
-                                                                        'cloudwatch_logs_subscription_role_arn}'),
-                'providers':                                           {
+                'prefix':                                'unit-test',
+                'cluster':                               'advanced',
+                'account_ids':                           ['123456789012'],
+                'destination_kinesis_stream_arn':        '${'
+                                                         'module.kinesis_advanced.arn}',
+                'cloudwatch_logs_subscription_role_arn': (
+                    '${module.cloudwatch_logs_destination_advanced.'
+                    'cloudwatch_logs_subscription_role_arn}'),
+                'providers': {
                     'aws': 'aws.us-east-2'
                 }
-            }, 'cloudwatch_logs_destination_advanced_us-west-2': {
+            },
+            'cloudwatch_logs_destination_advanced_us-west-2': {
                 'source':
                     './modules/tf_cloudwatch_logs_destination/modules/destination',
-                'prefix':                                              'unit-test', 'cluster': 'advanced',
-                'account_ids':                                         ['123456789012'],
-                'destination_kinesis_stream_arn':                      '${module.kinesis_advanced.arn}',
-                'cloudwatch_logs_subscription_role_arn':               ('${module.cloudwatch_logs_destination_advanced.'
-                                                                        'cloudwatch_logs_subscription_role_arn}'),
-                'providers':                                           {
+                'prefix':                                'unit-test',
+                'cluster':                               'advanced',
+                'account_ids':                           ['123456789012'],
+                'destination_kinesis_stream_arn':        '${'
+                                                         'module.kinesis_advanced.arn}',
+                'cloudwatch_logs_subscription_role_arn': (
+                    '${module.cloudwatch_logs_destination_advanced.'
+                    'cloudwatch_logs_subscription_role_arn}'),
+                'providers': {
                     'aws': 'aws.us-west-2'
                 }
             }
@@ -474,8 +658,11 @@ class TestTerraformGenerate:
 
         expected = {
             'cloudwatch_events_advanced': {
-                'source':      './modules/tf_cloudwatch_events', 'prefix': 'unit-test', 'cluster': 'advanced',
-                'kinesis_arn': '${module.kinesis_advanced.arn}', 'event_pattern': '{"account": ["12345678910"]}',
+                'source':        './modules/tf_cloudwatch_events',
+                'prefix':        'unit-test',
+                'cluster':       'advanced',
+                'kinesis_arn':   '${module.kinesis_advanced.arn}',
+                'event_pattern': '{"account": ["12345678910"]}',
             },
         }
 
@@ -489,8 +676,11 @@ class TestTerraformGenerate:
 
         expected = {
             'cloudwatch_events_advanced': {
-                'source':      './modules/tf_cloudwatch_events', 'prefix': 'unit-test', 'cluster': 'advanced',
-                'kinesis_arn': '${module.kinesis_advanced.arn}', 'event_pattern': None,
+                'source':        './modules/tf_cloudwatch_events',
+                'prefix':        'unit-test',
+                'cluster':       'advanced',
+                'kinesis_arn':   '${module.kinesis_advanced.arn}',
+                'event_pattern': None,
             },
         }
 
@@ -511,9 +701,11 @@ class TestTerraformGenerate:
         """CLI - Terraform Generate CloudWatch Events Cross Account Region Map"""
         # pylint: disable=protected-access
         settings = {
-            'accounts':         {
-                '123456789012': ['us-east-1'], '234567890123': ['us-east-1']
-            }, 'organizations': {
+            'accounts': {
+                '123456789012': ['us-east-1'],
+                '234567890123': ['us-east-1']
+            },
+            'organizations': {
                 'o-aabbccddee': ['us-west-1']
             }
         }
@@ -521,9 +713,10 @@ class TestTerraformGenerate:
         result = cloudwatch_events._map_regions(settings)
 
         expected = {
-            'us-east-1':    {
+            'us-east-1': {
                 'accounts': ['123456789012', '234567890123'],
-            }, 'us-west-1': {
+            },
+            'us-west-1': {
                 'organizations': ['o-aabbccddee']
             }
         }
@@ -533,26 +726,39 @@ class TestTerraformGenerate:
     def test_generate_cloudwatch_events_cross_account(self):
         """CLI - Terraform Generate CloudWatch Events Cross Account"""
         self.config['clusters']['advanced']['modules']['cloudwatch_events']['cross_account'] = {
-            'accounts':         {
-                '123456789012': ['us-east-1'], '234567890123': ['us-east-1']
-            }, 'organizations': {
+            'accounts': {
+                '123456789012': ['us-east-1'],
+                '234567890123': ['us-east-1']
+            },
+            'organizations': {
                 'o-aabbccddee': ['us-west-1']
             }
         }
         cloudwatch_events.generate_cloudwatch_events('advanced', self.cluster_dict, self.config)
 
         expected = {
-            'cloudwatch_events_advanced':                            {
-                'source':      './modules/tf_cloudwatch_events', 'prefix': 'unit-test', 'cluster': 'advanced',
-                'kinesis_arn': '${module.kinesis_advanced.arn}', 'event_pattern': '{"account": ["12345678910"]}',
-            }, 'cloudwatch_events_cross_account_advanced_us-east-1': {
-                'source':   './modules/tf_cloudwatch_events/cross_account', 'region': 'us-east-1',
-                'accounts': ['123456789012', '234567890123'], 'organizations': [], 'providers': {
+            'cloudwatch_events_advanced': {
+                'source':        './modules/tf_cloudwatch_events',
+                'prefix':        'unit-test',
+                'cluster':       'advanced',
+                'kinesis_arn':   '${module.kinesis_advanced.arn}',
+                'event_pattern': '{"account": ["12345678910"]}',
+            },
+            'cloudwatch_events_cross_account_advanced_us-east-1': {
+                'source':        './modules/tf_cloudwatch_events/cross_account',
+                'region':        'us-east-1',
+                'accounts':      ['123456789012', '234567890123'],
+                'organizations': [],
+                'providers': {
                     'aws': 'aws.us-east-1'
                 }
-            }, 'cloudwatch_events_cross_account_advanced_us-west-1': {
-                'source':        './modules/tf_cloudwatch_events/cross_account', 'region': 'us-west-1', 'accounts': [],
-                'organizations': ['o-aabbccddee'], 'providers': {
+            },
+            'cloudwatch_events_cross_account_advanced_us-west-1': {
+                'source':        './modules/tf_cloudwatch_events/cross_account',
+                'region':        'us-west-1',
+                'accounts':      [],
+                'organizations': ['o-aabbccddee'],
+                'providers': {
                     'aws': 'aws.us-west-1'
                 }
             },
@@ -567,8 +773,9 @@ class TestTerraformGenerate:
 
         cluster_keys = {'module', 'output'}
 
-        test_modules = {'classifier_test_lambda', 'classifier_test_iam', 'cloudwatch_monitoring_test', 'kinesis_test',
-            'kinesis_events_test', 's3_events_unit-test_test_unit-test-bucket'}
+        test_modules = {'classifier_test_lambda', 'classifier_test_iam',
+                        'cloudwatch_monitoring_test', 'kinesis_test', 'kinesis_events_test',
+                        's3_events_unit-test_test_unit-test-bucket'}
 
         assert_equal(set(tf_cluster['module']), test_modules)
         assert_equal(set(tf_cluster), cluster_keys)
@@ -581,15 +788,20 @@ class TestTerraformGenerate:
         cluster_keys = {'module', 'output'}
 
         advanced_modules = {'classifier_advanced_lambda', 'classifier_advanced_iam',
-            'cloudwatch_logs_destination_advanced',
-            # us-west-1 because of the flow logs module in the default (us-west-1) region
-            'cloudwatch_logs_destination_advanced_us-west-1',
-            # us-east-2 and us-west-2 because of the explicit cloudwatch_destinations
-            # in these regions
-            'cloudwatch_logs_destination_advanced_us-east-2', 'cloudwatch_logs_destination_advanced_us-west-2',
-            'cloudwatch_monitoring_advanced', 'kinesis_advanced', 'kinesis_events_advanced', 'flow_logs_advanced',
-            'cloudtrail_advanced', 'cloudwatch_events_advanced', 's3_events_unit-test_advanced_unit-test-bucket_data',
-            's3_events_unit-test_advanced_unit-test_cloudtrail_data'}
+                            'cloudwatch_logs_destination_advanced',
+                            # us-west-1 because of the flow logs module in the default (
+                            # us-west-1) region
+                            'cloudwatch_logs_destination_advanced_us-west-1',
+                            # us-east-2 and us-west-2 because of the explicit
+                            # cloudwatch_destinations
+                            # in these regions
+                            'cloudwatch_logs_destination_advanced_us-east-2',
+                            'cloudwatch_logs_destination_advanced_us-west-2',
+                            'cloudwatch_monitoring_advanced', 'kinesis_advanced',
+                            'kinesis_events_advanced', 'flow_logs_advanced', 'cloudtrail_advanced',
+                            'cloudwatch_events_advanced',
+                            's3_events_unit-test_advanced_unit-test-bucket_data',
+                            's3_events_unit-test_advanced_unit-test_cloudtrail_data'}
 
         assert_equal(set(tf_cluster['module'].keys()), advanced_modules)
         assert_equal(set(tf_cluster.keys()), cluster_keys)
@@ -622,17 +834,21 @@ class TestTerraformGenerate:
         assert_false(result['module']['globals']['sqs_use_prefix'])
 
     def test_generate_required_lambda_invalid_config(self):
-        "CLI - Terraform Generate Global Lambda Settings, Invalid Config"
+        """CLI - Terraform Generate Global Lambda Settings, Invalid Config"""
 
         assert_raises(ConfigError, generate.generate_global_lambda_settings, config=self.config,
-            conf_name='athena_partition_refresh_config', generate_func='test_func',
-            tf_tmp_file_name='test_tf_tmp_file_path', )
+                      conf_name='athena_partition_refresh_config', generate_func='test_func',
+                      tf_tmp_file_name='test_tf_tmp_file_path', )
 
     @patch('logging.Logger.warning')
     def test_generate_optional_lambda_not_in_config(self, log_mock):
-        "CLI - Terraform Generate Global Lambda Settings, Optional Missing in Config"
+        """CLI - Terraform Generate Global Lambda Settings, Optional Missing in Config"""
         fake_opt_conf_name = 'fake_optional_conf_name'
         generate.generate_global_lambda_settings(config=self.config, conf_name=fake_opt_conf_name,
-            generate_func='test_func', tf_tmp_file_name='test_tf_tmp_file_path', required=False, )
+                                                 generate_func='test_func',
+                                                 tf_tmp_file_name='test_tf_tmp_file_path',
+                                                 required=False, )
 
-        log_mock.assert_called_with('Optional configuration missing in lambda.json, skipping: %s', fake_opt_conf_name)
+        log_mock.assert_called_with('Optional configuration missing in lambda.json, skipping: %s',
+                                    fake_opt_conf_name
+                                    )
