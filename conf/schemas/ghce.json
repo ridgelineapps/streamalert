@@ -110,6 +110,7 @@
             "trigger_id": "string",
             "user": "string",
             "user_agent": "string",
+            "user_id": "integer",
             "visibility": "string",
             "workflow_id": "string",
             "workflow_run_id": "string"
@@ -226,6 +227,7 @@
                 "trigger_id",
                 "user",
                 "user_agent",
+                "user_id",
                 "visibility",
                 "workflow_id",
                 "workflow_run_id"
