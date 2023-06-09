@@ -162,7 +162,8 @@ class DynamoDBDriver(PersistenceDriver):
                 self.id,
                 key
             )
-            # If index attribute is provide in the lookup table configuration, invoke index function instead of primary
+            # If index attribute is provide in the lookup table configuration, invoke index
+            # function instead of primary
             if self._dynamo_db_index:
                 self._load_index(key)
             else:
