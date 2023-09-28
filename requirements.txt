@@ -23,7 +23,7 @@ policyuniverse==1.5.0.20220613
 pyfakefs==5.0.0
 pylint==2.3.1
 pymsteams==0.2.2
-requests==2.28.1
+requests==2.31.0
 Sphinx==5.3.0
 sphinx-rtd-theme==1.1.1
 yapf==0.32.0
