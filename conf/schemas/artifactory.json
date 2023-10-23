@@ -1,0 +1,154 @@
+{
+    "artifactory:access-logs": {
+        "schema": {
+            "action": "string",
+            "client_ip": "string",
+            "method": "string",
+            "repo_path": "string",
+            "timestamp": "string",
+            "trace_id": "string",
+            "user_name": "string"
+        },
+        "parser": "json",
+        "configuration": {
+            "optional_top_level_keys": [
+                "client_ip",
+                "method",
+                "repo_path",
+                "user_name"
+            ]
+        }
+    },
+    "artifactory:access-audit-logs": {
+        "schema": {
+            "action": "string",
+            "expiry": "string",
+            "issuer": "string",
+            "old_token_id": "string",
+            "refreshable": "boolean",
+            "subject": "string",
+            "timestamp": "string",
+            "token_id": "string",
+            "type": "string"
+        },
+        "parser": "json",
+        "configuration": {
+            "optional_top_level_keys": [
+                "issuer",
+                "old_token_id",
+                "subject"
+            ]
+        }
+    },
+    "artifactory:request-logs": {
+        "schema": {
+            "client_ip": "string",
+            "method": "string",
+            "response_code": "integer",
+            "response_content_length": "integer",
+            "request_content_length": "integer",
+            "request_duration": "integer",
+            "request_uri": "string",
+            "timestamp": "string",
+            "trace_id": "string",
+            "user_agent": "string",
+            "user_name": "string"
+        },
+        "parser": "json",
+        "configuration": {
+            "optional_top_level_keys": [
+                "client_ip",
+                "user_agent",
+                "user_name"
+            ]
+        }
+    },
+    "artifactory:request-out-logs": {
+        "schema": {
+            "method": "string",
+            "remote_repo_name": "string",
+            "response_code": "integer",
+            "response_content_length": "integer",
+            "request_content_length": "integer",
+            "request_duration": "integer",
+            "request_uri": "string",
+            "timestamp": "string",
+            "trace_id": "string",
+            "user_name": "string"
+        },
+        "parser": "json",
+        "configuration": {
+            "optional_top_level_keys": [
+                "remote_repo_name",
+                "request_uri",
+                "trace_id",
+                "user_name"
+            ]
+        }
+    },
+        "artifactory:router-request-logs": {
+        "schema": {
+            "ClientAddr": "string",
+            "DownstreamContentSize": "integer",
+            "DownstreamStatus": "integer",
+            "Duration": "integer",
+            "RequestMethod": "string",
+            "RequestPath": "string",
+            "ServiceAddr": "string",
+            "StartUTC": "string",
+            "level": "string",
+            "msg": "string",
+            "request_Uber-Trace-Id": "string",
+            "request_User-Agent": "string",
+            "time": "string"
+        },
+        "parser": "json",
+        "configuration": {
+            "optional_top_level_keys": [
+                "ClientAddr",
+                "RequestPath",
+                "ServiceAddr",
+                "msg"
+            ]
+        }
+    },
+        "artifactory:security-audit-logs": {
+        "schema": {
+            "client_ip": "string",
+            "data_changed": {},
+            "entity": "string",
+            "entity_name": "string",
+            "event_type": "string",
+            "logged_principal": "string",
+            "timestamp": "string",
+            "trace_id": "string",
+            "user_name": "string"
+        },
+        "parser": "json",
+        "configuration": {
+            "optional_top_level_keys": [
+                "client_ip",
+                "logged_principal",
+                "user_name"
+            ]
+        }
+    },
+    "artifactory:service-logs": {
+        "schema": {
+            "class": "string",
+            "level": "string",
+            "message": "string",
+            "service_type": "string",
+            "thread": "string",
+            "timestamp": "string",
+            "trace_id": "string"
+        },
+        "parser": "json",
+        "configuration": {
+            "optional_top_level_keys": [
+                "message",
+                "trace_id"
+            ]
+        }
+    }
+}
