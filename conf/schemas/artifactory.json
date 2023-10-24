@@ -86,7 +86,7 @@
             ]
         }
     },
-        "artifactory:router-request-logs": {
+    "artifactory:router-request-logs": {
         "schema": {
             "ClientAddr": "string",
             "DownstreamContentSize": "integer",
@@ -112,9 +112,9 @@
             ]
         }
     },
-        "artifactory:security-audit-logs": {
+    "artifactory:security-audit-logs": {
         "schema": {
-            "client_ip": "string",
+            "user_ip": "string",
             "data_changed": {},
             "entity": "string",
             "entity_name": "string",
@@ -127,7 +127,7 @@
         "parser": "json",
         "configuration": {
             "optional_top_level_keys": [
-                "client_ip",
+                "user_ip",
                 "logged_principal",
                 "user_name"
             ]
