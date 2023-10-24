@@ -233,6 +233,7 @@
                 "BlockedFileSize",
                 "BlockedFileType",
                 "DownloadedFileNames",
+                "FileInfo",
                 "IsIsolated",
                 "PolicyID",
                 "PolicyName",
@@ -276,6 +277,7 @@
             "optional_envelope_keys": [],
             "optional_top_level_keys": [
                 "AccountID",
+                "DetectedProtocol",
                 "PolicyID",
                 "SourceInternalIP",
                 "SourcePort"
@@ -333,6 +335,7 @@
                 "ClientTLSCipher",
                 "ClientTLSHandshakeDurationMs",
                 "ClientTLSVersion",
+                "DetectedProtocol",
                 "EgressPort",
                 "EgressRuleID",
                 "EgressRuleName",
