@@ -106,9 +106,14 @@
         "configuration": {
             "optional_top_level_keys": [
                 "ClientAddr",
+                "DownstreamContentSize",
+                "DownstreamStatus",
+                "Duration",
                 "RequestPath",
                 "ServiceAddr",
-                "msg"
+                "msg",
+                "request_Uber-Trace-Id",
+                "request_User-Agent"
             ]
         }
     },
