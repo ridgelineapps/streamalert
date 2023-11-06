@@ -39,6 +39,7 @@ class Classifier:
     _config = None
     _firehose_client = None
     _sqs_client = None
+    _schema_sqs_client = None
 
     def __init__(self):
         # Create some objects to be cached if they have not already been created
@@ -51,6 +52,8 @@ class Classifier:
             )
         )
         Classifier._sqs_client = Classifier._sqs_client or SQSClient()
+        # Set up new SQS client for the schema update queue
+        Classifier._schema_sqs_client = Classifier._schema_sqs_client or SQSClient(schema_update=True)
 
         # Setup the normalization logic
         Normalizer.load_from_config(self.config)
@@ -74,6 +77,10 @@ class Classifier:
     @property
     def data_retention_enabled(self):
         return Classifier._firehose_client is not None
+
+    @property
+    def schema_sqs(self):
+        return Classifier._schema_sqs_client
 
     @property
     def sqs(self):
@@ -114,7 +121,7 @@ class Classifier:
         )
 
     @classmethod
-    def _process_log_schemas(cls, payload_record, logs_config):
+    def _process_log_schemas(cls, payload_record, logs_config, bucket):
         """Get any log schemas that matched this log format
 
         If successful, this method sets the PayloadRecord.parser attribute to the parser
@@ -123,16 +130,27 @@ class Classifier:
         Args:
             payload_record: A PayloadRecord object
             logs_config: Subset of entire logs.json schemas to use for processing
+            bucket: The bucket name that the payload was received from
 
         Returns:
             bool: True if the payload's data was successfully parsed, False otherwise
         """
         # Loop over all logs schemas declared for this source
         for log_type, options in logs_config.items():
-            LOGGER.debug('Trying schema \'%s\' with options: %s', log_type, options)
+            # For Dev Env, GitHub events are sent from `rldev1-streamalert-test-bucket`
+            # For Prod Env, GitHub events are sent from `rl-github-audit-logs`
+            # If the log type being processes is `ghce:cloud` and the bucket is one of the above,
+            # set force_match to True
+            if bucket in ['rldev1-streamalert-test-bucket', 'rl-github-audit-logs'] and log_type == 'ghce:cloud':
+                force_match = True
+                LOGGER.debug('Try to force match GitHub Schema: %s', force_match)
+            else:
+                force_match = False
+
+            LOGGER.debug('Trying schema \'%s\' with options: %s force_match: %s', log_type, options, force_match)
 
             # Get the parser type to use for this log and set up the parser
-            parser = get_parser(options['parser'])(options, log_type=log_type)
+            parser = get_parser(options['parser'])(options, log_type=log_type, force_match=force_match)
 
             parsed = parser.parse(payload_record.data)
             if not parsed:
@@ -140,6 +158,11 @@ class Classifier:
                 continue
 
             LOGGER.debug('Log classified with schema: %s', log_type)
+
+            # Set the schema_update if schema_sqs_msg is present
+            if parser.schema_sqs_msg:
+                LOGGER.debug('Schema SQS Message: %s', parser.schema_sqs_msg)
+                payload_record.schema_update = parser.schema_sqs_msg
 
             # Set the parser on successful parse
             payload_record.parser = parser
@@ -156,6 +179,11 @@ class Classifier:
         """
         # Get logs defined for the service/entity in the config
         logs_config = self._load_logs_for_resource(payload.service(), payload.resource)
+
+        # Check if 'bucket' attribute is defined in the payload
+        bucket = payload.bucket if hasattr(payload, 'bucket') else None
+        LOGGER.debug('Bucket: %s', bucket)
+
         if not logs_config:
             LOGGER.error(
                 'No log types defined for resource [%s] in sources configuration for service [%s]',
@@ -169,7 +197,7 @@ class Classifier:
             self._processed_size += len(record)
 
             # Get the parser for this data
-            self._process_log_schemas(record, logs_config)
+            self._process_log_schemas(record, logs_config, bucket)
 
             LOGGER.debug('Parsed and classified payload: %s', bool(record))
 
@@ -238,8 +266,41 @@ class Classifier:
             FUNCTION_NAME, MetricLogger.FAILED_PARSES, self._failed_record_count
         )
 
+    def _format_schema_update_msg(self):
+        """
+        Parses schema_update value for each record in _payloads and formats the SQS message
+        schema_update structure:
+        {'schema_type': 'ghce:cloud', 'schema': {'val1': 'string', 'val2': 'boolean'}, 'optional_top_level_keys': ['val1', 'val2']}
+
+        Returns:
+            sqs_payload (dict): SQS message payload
+        """
+        LOGGER.info('Formatting schema update message for %d records', len(self._payloads))
+        sqs_payload = {}
+        for record in self._payloads:
+            if record.schema_update:
+                schema_type = record.schema_update.get('schema_type', '')
+                schema = record.schema_update.get('schema', {})
+                optional_top_level_keys = record.schema_update.get('optional_top_level_keys', [])
+
+                if schema_type not in sqs_payload.keys():
+                    sqs_payload[schema_type] = {
+                        'schema': schema,
+                        'optional_top_level_keys': optional_top_level_keys
+                    }
+                else:
+                    sqs_payload[schema_type]['schema'].update(schema)
+                    for x in optional_top_level_keys:
+                        if x not in sqs_payload[schema_type]['optional_top_level_keys']:
+                            sqs_payload[schema_type]['optional_top_level_keys'].append(x)
+
+                # Remove schema_update from the record to reduce the size of the SQS message
+                del record.schema_update
+
+        return sqs_payload
+
     def run(self, records):
-        """Run classificaiton of the records in the Lambda input
+        """Run classification of the records in the Lambda input
 
         Args:
             records (list): An list of records received by Lambda
@@ -258,6 +319,11 @@ class Classifier:
             self._classify_payload(payload)
 
         self._log_metrics()
+
+        # Send schema_update SQS
+        sqs_payload = self._format_schema_update_msg()
+        if sqs_payload:
+            self.schema_sqs.send_schema_msg(sqs_payload)
 
         # Send records to SQS before sending to Firehose
         self.sqs.send(self._payloads)
