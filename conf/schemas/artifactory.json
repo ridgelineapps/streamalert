@@ -86,6 +86,22 @@
             ]
         }
     },
+    "artifactory:frontend-request-logs": {
+        "schema": {
+            "datetime": "string",
+            "log_name": "integer",
+            "request": {},
+            "response": {},
+            "timestamp": "string",
+            "traceId": "string"
+        },
+        "parser": "json",
+        "configuration": {
+            "optional_top_level_keys": [
+                "traceId"
+            ]
+        }
+    },
     "artifactory:router-request-logs": {
         "schema": {
             "ClientAddr": "string",
