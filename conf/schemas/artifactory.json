@@ -89,7 +89,7 @@
     "artifactory:frontend-request-logs": {
         "schema": {
             "datetime": "string",
-            "log_name": "integer",
+            "log_name": "string",
             "request": {},
             "response": {},
             "timestamp": "string",
