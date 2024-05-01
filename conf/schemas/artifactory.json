@@ -47,7 +47,7 @@
             "response_code": "integer",
             "response_content_length": "integer",
             "request_content_length": "integer",
-            "request_duration": "integer",
+            "request_duration": "string",
             "request_uri": "string",
             "timestamp": "string",
             "trace_id": "string",
