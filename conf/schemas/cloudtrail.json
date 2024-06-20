@@ -50,7 +50,7 @@
       "userAgent": "string",
       "userIdentity": {},
       "vpcEndpointId": "string",
-      "vpcEndpointAccountId": "string",
+      "vpcEndpointAccountId": "string"
     },
     "parser": "json",
     "configuration": {
