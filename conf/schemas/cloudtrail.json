@@ -49,7 +49,8 @@
       "tlsDetails": {},
       "userAgent": "string",
       "userIdentity": {},
-      "vpcEndpointId": "string"
+      "vpcEndpointId": "string",
+      "vpcEndpointAccountId": "string",
     },
     "parser": "json",
     "configuration": {
@@ -72,7 +73,8 @@
         "sourceIPAddress",
         "tlsDetails",
         "userAgent",
-        "vpcEndpointId"
+        "vpcEndpointId",
+        "vpcEndpointAccountId"
       ]
     }
   },
