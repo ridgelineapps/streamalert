@@ -59,7 +59,7 @@ google-auth==2.15.0
 google-auth-httplib2==0.1.0
 googleapis-common-protos==1.57.0
 httplib2==0.21.0
-idna==3.4
+idna==3.7
 imagesize==1.4.1
 importlib-metadata==5.1.0
 importlib-resources==5.10.1
