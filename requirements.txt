@@ -64,7 +64,7 @@ imagesize==1.4.1
 importlib-metadata==5.1.0
 importlib-resources==5.10.1
 isort==4.3.21
-Jinja2==3.1.2
+Jinja2==3.1.4
 jsondiff==2.0.0
 jsonpatch==1.32
 jsonpickle==3.0.0
