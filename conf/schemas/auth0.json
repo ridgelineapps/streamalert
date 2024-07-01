@@ -1,0 +1,24 @@
+{
+  "auth0:events": {
+    "schema": {
+      "_id": "string",
+      "attributes": {},
+      "date": "string",
+      "message": "string",
+      "service": "string",
+      "source": "string",
+      "status": "string",
+      "tags": []
+    },
+    "parser": "json",
+    "configuration": {
+      "log_patterns": {
+        "service": "auth0"
+      },
+      "optional_top_level_fields": [
+        "message",
+        "tags"
+      ]
+    }
+  }
+}

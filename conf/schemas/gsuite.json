@@ -22,5 +22,36 @@
         "ownerDomain"
       ]
     }
+  },
+  "gsuite:alerts": {
+    "schema": {
+      "alertId": "string",
+      "createTime": "string",
+      "customerId": "string",
+      "data": {},
+      "endTime": "string",
+      "etag": "string",
+      "metadata": {},
+      "query": "string",
+      "securityInvestigationToolLink": "string",
+      "source": "string",
+      "startTime": "string",
+      "type": "string",
+      "updateTime": "string"
+    },
+    "parser": "json",
+    "configuration": {
+      "optional_top_level_keys": [
+        "data",
+        "endTime",
+        "etag",
+        "metadata",
+        "query",
+        "type",
+        "securityInvestigationToolLink",
+        "source",
+        "updateTime"
+      ]
+    }
   }
 }

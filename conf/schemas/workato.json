@@ -1,0 +1,25 @@
+{
+  "workato:events": {
+    "schema": {
+      "_id": "string",
+      "attributes": {},
+      "date": "string",
+      "host": "string",
+      "message": "string",
+      "service": "string",
+      "source": "string",
+      "status": "string",
+      "tags": []
+    },
+    "parser": "json",
+    "configuration": {
+      "log_patterns": {
+        "service": "workato"
+      },
+      "optional_top_level_keys": [
+        "message",
+        "tags"
+      ]
+    }
+  }
+}
